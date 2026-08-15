@@ -1,0 +1,13 @@
+        val cacheKey = "permanent-$companionId"
+
+        // 先检查缓存
+        permanentMemoryCache[cacheKey]?.let { cached ->
+            val cacheTime = cacheTimestamps[cacheKey] ?: 0L
+            Logger.d("MemoryLayer", "【缓存】使用永久记忆缓存 (${cached.size}条, 创建于 ${System.currentTimeMillis() - cacheTime}ms 前)")
+            return cached
+        }
+
+        // 缓存未命中，计算永久记忆
+        val startTime = System.currentTimeMillis()
+        Logger.d("MemoryLayer", "【计算】开始计算永久记忆")
+

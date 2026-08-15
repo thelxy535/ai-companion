@@ -1,0 +1,2 @@
+# 暂时禁用此文件，因为缺少 Accompanist Permissions 依赖
+# 需要添加依赖：implementation("com.google.accompanist:accompanist-permissions:0.32.0")

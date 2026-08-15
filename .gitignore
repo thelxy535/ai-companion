@@ -1,0 +1,53 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Android
+*.apk
+*.ap_
+*.aab
+output.json
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.ipr
+*.iws
+.idea_modules/
+
+# Local configuration
+local.properties
+
+# Keystore
+*.jks
+*.keystore
+
+# External native build
+.cxx/
+.externalNativeBuild/
+
+# Google Services
+google-services.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Captures
+captures/
+
+# Built application files
+*.dex
+*.class
+
+# Generated files
+bin/
+gen/
+out/
+
+# NDK
+obj/
+
+# Signing files
+.signing/

@@ -1,0 +1,650 @@
+package com.companion.cc.ui.chat
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.companion.cc.domain.manager.CompanionStateManager
+import com.companion.cc.domain.manager.SystemPromptManager
+import com.companion.cc.domain.model.Message
+import com.companion.cc.domain.model.MessageRole
+import com.companion.cc.domain.repository.MessageRepository
+import com.companion.cc.domain.usecase.DetectEmotionUseCase
+import com.companion.cc.domain.usecase.GetMessagesUseCase
+import com.companion.cc.domain.usecase.MemoryManagementUseCase
+import com.companion.cc.domain.usecase.SendMessageUseCase
+import com.companion.cc.domain.usecase.SteppedThinkingUseCase
+import com.companion.cc.domain.usecase.StreamSendMessageUseCase
+import com.companion.cc.domain.usecase.VectorMemoryManagementUseCase
+import com.companion.cc.util.ErrorMessageHelper
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
+import java.util.UUID
+import javax.inject.Inject
+
+@HiltViewModel
+class ChatViewModel @Inject constructor(
+    private val getMessagesUseCase: GetMessagesUseCase,
+    private val sendMessageUseCase: SendMessageUseCase,
+    private val streamSendMessageUseCase: StreamSendMessageUseCase,
+    private val steppedThinkingUseCase: SteppedThinkingUseCase,
+    private val vectorMemoryManagementUseCase: VectorMemoryManagementUseCase,
+    private val detectEmotionUseCase: DetectEmotionUseCase,
+    private val messageRepository: MessageRepository,
+    private val memoryManagementUseCase: MemoryManagementUseCase,
+    private val companionStateManager: CompanionStateManager,
+    private val systemPromptManager: SystemPromptManager
+) : ViewModel() {
+
+    private val _messages = MutableStateFlow<List<Message>>(emptyList())
+    val messages: StateFlow<List<Message>> = _messages.asStateFlow()
+
+    private val _isLoading = MutableStateFlow(false)
+    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+
+    private val _error = MutableStateFlow<String?>(null)
+    val error: StateFlow<String?> = _error.asStateFlow()
+
+    private val userId = "default"
+    private val drafts = mutableMapOf<String, String>()
+
+    // 状态缓存
+    private val stateCache = mutableMapOf<String, Any>()
+
+    fun saveDraft(companionId: String, text: String) {
+        drafts[companionId] = text
+    }
+
+    fun getDraft(companionId: String): String {
+        return drafts[companionId] ?: ""
+    }
+
+    fun clearDraft(companionId: String) {
+        drafts.remove(companionId)
+    }
+
+    fun loadMessages(companionId: String) {
+        viewModelScope.launch {
+            try {
+                getMessagesUseCase(userId, companionId).collect { messageList ->
+                    _messages.value = messageList
+                }
+            } catch (e: Exception) {
+                _error.value = e.message ?: "加载消息失败"
+            }
+        }
+    }
+
+    fun sendMessage(companionId: String, content: String) {
+        if (content.isBlank() || _isLoading.value) return
+
+        viewModelScope.launch {
+            _isLoading.value = true
+            _error.value = null
+
+            try {
+                // 1. 检测用户情绪
+                val emotionDetection = detectEmotionUseCase(content)
+
+                // 2. 创建用户消息（使用UUID确保唯一性）
+                val timestamp = System.currentTimeMillis()
+                val userMessage = Message(
+                    id = "${timestamp}_${java.util.UUID.randomUUID()}_user",
+                    userId = userId,
+                    companionId = companionId,
+                    role = MessageRole.USER,
+                    content = content,
+                    timestamp = timestamp,
+                    emotion = emotionDetection.emotion.name.lowercase()
+                )
+
+                // 保存用户消息
+                messageRepository.saveMessage(userMessage)
+                _messages.value = _messages.value + userMessage
+
+                // 保存到记忆系统
+                memoryManagementUseCase.saveMemory(
+                    userId = userId,
+                    role = MessageRole.USER,
+                    content = content,
+                    emotion = emotionDetection.emotion.name.lowercase(),
+                    timestamp = userMessage.timestamp
+                )
+
+                // 更新用户画像
+                memoryManagementUseCase.updateUserProfile(userId, content)
+
+                // 3. 加载/更新角色状态
+                val currentState = stateCache[companionId]
+                    ?: companionStateManager.loadState(userId, companionId)
+
+                val updatedState = companionStateManager.updateState(
+                    userId = userId,
+                    companionId = companionId,
+                    currentState = currentState,
+                    userInput = content,
+                    conversationHistory = _messages.value
+                )
+
+                stateCache[companionId] = updatedState
+
+                // 4. 检测特殊模式
+                val specialMode = companionStateManager.detectSpecialMode(
+                    companionId,
+                    updatedState,
+                    content
+                )
+
+                // 5. 获取记忆上下文
+                val memoryContextObj = memoryManagementUseCase.getMemoryContext(userId, content)
+                val memoryContext = formatMemoryContext(memoryContextObj)
+
+                // 5.5 执行思考链（Stepped Thinking）
+                val thinkingResult = try {
+                    steppedThinkingUseCase(
+                        companionId = companionId,
+                        userMessage = content,
+                        currentState = updatedState,
+                        recentMemories = memoryContext
+                    )
+                } catch (e: Exception) {
+                    android.util.Log.e("ChatViewModel", "思考链失败", e)
+                    null
+                }
+
+                // 记录思考过程（用于调试）
+                thinkingResult?.let { thinking ->
+                    android.util.Log.d("ChatViewModel", """
+                        === Stepped Thinking (sendMessage) ===
+                        意图: ${thinking.intent}
+                        情绪: ${thinking.emotion}
+                        策略: ${thinking.responseStrategy}
+                        语气: ${thinking.tone}
+                        长度: ${thinking.length}
+                    """.trimIndent())
+                }
+
+                // 6. 构建System Prompt（加入思考结果）
+                val systemPrompt = buildEnhancedSystemPrompt(
+                    companionId = companionId,
+                    basePrompt = systemPromptManager.buildSystemPrompt(
+                        companionId = companionId,
+                        moodState = updatedState,
+                        memoryContext = memoryContext,
+                        specialMode = specialMode
+                    ),
+                    thinkingResult = thinkingResult
+                )
+
+                // 7. 获取API参数
+                val apiParams = companionStateManager.getApiParameters(
+                    companionId,
+                    updatedState,
+                    specialMode
+                )
+
+                // === DEBUG LOG ===
+                android.util.Log.d("ChatViewModel", "=== AI调用信息 ===")
+                android.util.Log.d("ChatViewModel", "角色: $companionId")
+                android.util.Log.d("ChatViewModel", "特殊模式: $specialMode")
+                android.util.Log.d("ChatViewModel", "System Prompt前100字: ${systemPrompt.take(100)}")
+                android.util.Log.d("ChatViewModel", "记忆上下文: $memoryContext")
+                android.util.Log.d("ChatViewModel", "API参数: maxTokens=${apiParams.maxTokens}, temp=${apiParams.temperature}")
+
+                // 8. 构建对话历史
+                val conversationHistory = _messages.value.takeLast(10).map { msg ->
+                    mapOf(
+                        "role" to if (msg.role == MessageRole.USER) "user" else "assistant",
+                        "content" to msg.content
+                    )
+                }
+
+                // 9. 调用AI获取回复（使用新接口）
+                val aiResponse = sendMessageUseCase(
+                    systemPrompt = systemPrompt,
+                    conversationHistory = conversationHistory,
+                    apiParams = apiParams
+                )
+
+                // === DEBUG LOG ===
+                android.util.Log.d("ChatViewModel", "AI回复: $aiResponse")
+                android.util.Log.d("ChatViewModel", "回复长度: ${aiResponse.length}字")
+
+                // 5. 保存AI消息
+                val aiTimestamp = System.currentTimeMillis()
+                val aiMessage = Message(
+                    id = "${aiTimestamp}_${java.util.UUID.randomUUID()}_assistant",
+                    userId = userId,
+                    companionId = companionId,
+                    role = MessageRole.ASSISTANT,
+                    content = aiResponse,
+                    timestamp = aiTimestamp
+                )
+
+                messageRepository.saveMessage(aiMessage)
+                _messages.value = _messages.value + aiMessage
+
+                // 保存AI回复到记忆系统
+                memoryManagementUseCase.saveMemory(
+                    userId = userId,
+                    role = MessageRole.ASSISTANT,
+                    content = aiResponse,
+                    emotion = null,
+                    timestamp = aiMessage.timestamp
+                )
+
+            } catch (e: Exception) {
+                _error.value = e.message ?: "发送消息失败"
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun clearError() {
+        _error.value = null
+    }
+
+    fun deleteMessage(messageId: String) {
+        viewModelScope.launch {
+            try {
+                // 从数据库删除
+                messageRepository.deleteMessage(messageId)
+                // 从当前列表中移除
+                _messages.value = _messages.value.filter { it.id != messageId }
+            } catch (e: Exception) {
+                _error.value = "删除失败: ${e.message}"
+            }
+        }
+    }
+
+    private fun formatMemoryContext(memoryContext: com.companion.cc.domain.model.MemoryContext): String {
+        val parts = mutableListOf<String>()
+
+        // 用户基本信息
+        memoryContext.userProfile?.let { profile ->
+            val infoParts = mutableListOf<String>()
+            profile.basicInfo.name?.let { infoParts.add("用户名：$it") }
+            profile.basicInfo.occupation?.let { infoParts.add("职业：$it") }
+            if (profile.interests.isNotEmpty()) {
+                infoParts.add("兴趣：${profile.interests.take(3).joinToString("、")}")
+            }
+            if (infoParts.isNotEmpty()) {
+                parts.add(infoParts.joinToString("\n"))
+            }
+        }
+
+        // 重要记忆
+        if (memoryContext.relevantMemories.isNotEmpty()) {
+            parts.add("\n重要记忆：")
+            memoryContext.relevantMemories.take(3).forEach { memory ->
+                parts.add("- ${memory.content.take(50)}")
+            }
+        }
+
+        return parts.joinToString("\n")
+    }
+
+    /**
+     * 流式发送消息（新方法）
+     * 逐字显示AI回复
+     */
+    fun sendMessageStream(companionId: String, content: String) {
+        if (content.isBlank() || _isLoading.value) return
+
+        android.util.Log.d("ChatViewModel", "=== 开始发送消息（流式）===")
+        android.util.Log.d("ChatViewModel", "角色: $companionId")
+        android.util.Log.d("ChatViewModel", "内容: $content")
+
+        viewModelScope.launch {
+            _isLoading.value = true
+            _error.value = null
+
+            try {
+                // 1. 检测用户情绪
+                val emotionDetection = detectEmotionUseCase(content)
+
+                // 2. 创建并保存用户消息
+                val timestamp = System.currentTimeMillis()
+                val userMessage = Message(
+                    id = "${timestamp}_${UUID.randomUUID()}_user",
+                    userId = userId,
+                    companionId = companionId,
+                    role = MessageRole.USER,
+                    content = content,
+                    timestamp = timestamp,
+                    emotion = emotionDetection.emotion.name.lowercase()
+                )
+
+                messageRepository.saveMessage(userMessage)
+                _messages.value = _messages.value + userMessage
+
+                memoryManagementUseCase.saveMemory(
+                    userId = userId,
+                    role = MessageRole.USER,
+                    content = content,
+                    emotion = emotionDetection.emotion.name.lowercase(),
+                    timestamp = userMessage.timestamp
+                )
+
+                // 更新用户画像
+                memoryManagementUseCase.updateUserProfile(userId, content)
+
+                // 3. 加载/更新角色状态
+                val currentState = stateCache[companionId]
+                    ?: companionStateManager.loadState(userId, companionId)
+
+                val updatedState = companionStateManager.updateState(
+                    userId = userId,
+                    companionId = companionId,
+                    currentState = currentState,
+                    userInput = content,
+                    conversationHistory = _messages.value
+                )
+
+                stateCache[companionId] = updatedState
+
+                // 4. 检测特殊模式
+                val specialMode = companionStateManager.detectSpecialMode(
+                    companionId,
+                    updatedState,
+                    content
+                )
+
+                // 5. 获取记忆上下文
+                val memoryContextObj = memoryManagementUseCase.getMemoryContext(userId, content)
+                val memoryContext = formatMemoryContext(memoryContextObj)
+
+                // 5.1 向量记忆检索（新增）
+                val relevantMemories = try {
+                    vectorMemoryManagementUseCase.searchMemories(
+                        userId = userId,
+                        companionId = companionId,
+                        query = content,
+                        topK = 3
+                    )
+                } catch (e: Exception) {
+                    android.util.Log.e("ChatViewModel", "向量检索失败", e)
+                    emptyList()
+                }
+
+                // 格式化向量记忆
+                val vectorMemoryContext = if (relevantMemories.isNotEmpty()) {
+                    "\n【相关记忆】\n" + relevantMemories.joinToString("\n") { result ->
+                        "- ${result.memory.content} (相似度: ${(result.similarity * 100).toInt()}%)"
+                    }
+                } else {
+                    ""
+                }
+
+                // 记录检索结果
+                android.util.Log.d("ChatViewModel", """
+                    === 向量记忆检索 ===
+                    查询: $content
+                    找到记忆数: ${relevantMemories.size}
+                    ${relevantMemories.joinToString("\n") { "- ${it.memory.content} (${(it.similarity * 100).toInt()}%)" }}
+                """.trimIndent())
+
+                // 5.5 执行思考链（Stepped Thinking）
+                val thinkingResult = try {
+                    steppedThinkingUseCase(
+                        companionId = companionId,
+                        userMessage = content,
+                        currentState = updatedState,
+                        recentMemories = memoryContext + vectorMemoryContext  // 加入向量记忆
+                    )
+                } catch (e: Exception) {
+                    android.util.Log.e("ChatViewModel", "思考链失败", e)
+                    null
+                }
+
+                // 记录思考过程（用于调试）
+                thinkingResult?.let { thinking ->
+                    android.util.Log.d("ChatViewModel", """
+                        === Stepped Thinking ===
+                        意图: ${thinking.intent}
+                        情绪: ${thinking.emotion}
+                        策略: ${thinking.responseStrategy}
+                        语气: ${thinking.tone}
+                        长度: ${thinking.length}
+                    """.trimIndent())
+                }
+
+                // 6. 构建System Prompt（加入思考结果和向量记忆）
+                val systemPrompt = buildEnhancedSystemPrompt(
+                    companionId = companionId,
+                    basePrompt = systemPromptManager.buildSystemPrompt(
+                        companionId = companionId,
+                        moodState = updatedState,
+                        memoryContext = memoryContext + vectorMemoryContext,  // 加入向量记忆
+                        specialMode = specialMode
+                    ),
+                    thinkingResult = thinkingResult
+                )
+
+                // 7. 获取API参数
+                val apiParams = companionStateManager.getApiParameters(
+                    companionId,
+                    updatedState,
+                    specialMode
+                )
+
+                // 6. 构建对话历史
+                val conversationHistory = _messages.value.takeLast(10).map { msg ->
+                    mapOf(
+                        "role" to if (msg.role == MessageRole.USER) "user" else "assistant",
+                        "content" to msg.content
+                    )
+                }
+
+                // 7. 创建临时AI消息（用于逐字更新）
+                val aiTimestamp = System.currentTimeMillis()
+                val aiMessageId = "${aiTimestamp}_${UUID.randomUUID()}_assistant"
+                var accumulatedContent = ""
+
+                val tempAiMessage = Message(
+                    id = aiMessageId,
+                    userId = userId,
+                    companionId = companionId,
+                    role = MessageRole.ASSISTANT,
+                    content = "",  // 初始为空
+                    timestamp = aiTimestamp
+                )
+
+                // 添加到列表（会逐渐更新）
+                _messages.value = _messages.value + tempAiMessage
+
+                // 8. 流式获取AI回复（带重试机制）
+                var retryCount = 0
+                val maxRetries = 2
+                var lastError: Throwable? = null
+                var success = false
+
+                while (retryCount <= maxRetries && !success) {
+                    try {
+                        if (retryCount > 0) {
+                            android.util.Log.d("ChatViewModel", "重试第 $retryCount 次...")
+                            // 更新UI显示重试状态
+                            _messages.value = _messages.value.map { msg ->
+                                if (msg.id == aiMessageId) {
+                                    msg.copy(content = "🔄 正在重试 ($retryCount/$maxRetries)...")
+                                } else {
+                                    msg
+                                }
+                            }
+                            // 等待1秒再重试
+                            kotlinx.coroutines.delay(1000)
+                            accumulatedContent = "" // 重置累积内容
+                        }
+
+                        streamSendMessageUseCase(
+                            systemPrompt = systemPrompt,
+                            conversationHistory = conversationHistory,
+                            apiParams = apiParams
+                        ).catch { e ->
+                            android.util.Log.e("ChatViewModel", "流式响应中断", e)
+                            lastError = e
+
+                            // 判断是否可以重试
+                            if (ErrorMessageHelper.isRetryable(e) && retryCount < maxRetries) {
+                                android.util.Log.d("ChatViewModel", "错误可重试，准备重试...")
+                            } else {
+                                // 生成用户友好的错误消息
+                                val friendlyMessage = ErrorMessageHelper.getFriendlyMessage(e)
+                                val suggestion = ErrorMessageHelper.getSuggestion(e)
+
+                                val errorMessage = if (suggestion != null) {
+                                    "$friendlyMessage\n\n$suggestion"
+                                } else {
+                                    friendlyMessage
+                                }
+
+                                _error.value = errorMessage
+
+                                // 如果有部分内容，保留它；否则显示错误提示
+                                if (accumulatedContent.isEmpty()) {
+                                    accumulatedContent = "❌ $friendlyMessage"
+                                }
+                            }
+                        }.collect { chunk ->
+                            // 累积内容
+                            accumulatedContent += chunk
+                            android.util.Log.d("ChatViewModel", "收到chunk: $chunk (累积: ${accumulatedContent.length}字符)")
+
+                            // 更新消息列表中的AI消息
+                            _messages.value = _messages.value.map { msg ->
+                                if (msg.id == aiMessageId) {
+                                    msg.copy(content = accumulatedContent)
+                                } else {
+                                    msg
+                                }
+                            }
+                        }
+
+                        // 如果成功收到响应，标记成功
+                        if (accumulatedContent.isNotEmpty() && !accumulatedContent.startsWith("❌")) {
+                            success = true
+                        }
+                    } catch (e: Exception) {
+                        lastError = e
+                        android.util.Log.e("ChatViewModel", "第 $retryCount 次尝试失败", e)
+                    }
+
+                    if (!success) {
+                        retryCount++
+                    }
+                }
+
+                // 如果所有重试都失败了
+                if (!success) {
+                    val error = lastError
+                    if (error != null) {
+                        val friendlyMessage = ErrorMessageHelper.getFriendlyMessage(error)
+                        _error.value = "重试 $maxRetries 次后仍失败：$friendlyMessage"
+                        if (accumulatedContent.isEmpty() || accumulatedContent.startsWith("🔄")) {
+                            accumulatedContent = "❌ $friendlyMessage\n\n已重试 $maxRetries 次"
+                        }
+                    }
+                }
+
+                android.util.Log.d("ChatViewModel", "流式响应完成，总内容: $accumulatedContent")
+
+                // 9. 流式完成后，保存最终消息
+                val finalAiMessage = Message(
+                    id = aiMessageId,
+                    userId = userId,
+                    companionId = companionId,
+                    role = MessageRole.ASSISTANT,
+                    content = accumulatedContent,
+                    timestamp = aiTimestamp
+                )
+
+                messageRepository.saveMessage(finalAiMessage)
+
+                memoryManagementUseCase.saveMemory(
+                    userId = userId,
+                    role = MessageRole.ASSISTANT,
+                    content = accumulatedContent,
+                    emotion = null,
+                    timestamp = aiTimestamp
+                )
+
+                // 10. 自动提取并保存向量记忆（新增）
+                try {
+                    val conversation = "用户: $content\nAI: $accumulatedContent"
+                    vectorMemoryManagementUseCase.extractAndSaveMemories(
+                        userId = userId,
+                        companionId = companionId,
+                        conversation = conversation
+                    )
+                    android.util.Log.d("ChatViewModel", "向量记忆提取完成")
+                } catch (e: Exception) {
+                    android.util.Log.e("ChatViewModel", "向量记忆提取失败", e)
+                }
+
+            } catch (e: Exception) {
+                _error.value = e.message ?: "发送消息失败"
+                android.util.Log.e("ChatViewModel", "流式发送失败", e)
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    /**
+     * 构建增强的System Prompt（加入思考结果）
+     */
+    private fun buildEnhancedSystemPrompt(
+        companionId: String,
+        basePrompt: String,
+        thinkingResult: com.companion.cc.domain.usecase.ThinkingResult?
+    ): String {
+        if (thinkingResult == null) {
+            return basePrompt
+        }
+
+        // 将思考结果融入System Prompt
+        val thinkingGuide = """
+
+【内部思考结果】
+- 用户意图：${thinkingResult.intent}
+- 用户情绪：${thinkingResult.emotion}
+- 回复策略：${thinkingResult.responseStrategy}
+- 语气要求：${thinkingResult.tone}
+- 长度要求：${thinkingResult.length}
+
+请根据以上分析结果，调整你的回复方式。
+        """.trimIndent()
+
+        return basePrompt + thinkingGuide
+    }
+
+    /**
+     * 标记消息为重要记忆
+     */
+    fun markMessageAsImportant(messageId: String, isImportant: Boolean) {
+        viewModelScope.launch {
+            try {
+                val importance = if (isImportant) 90 else 50 // 重要=90, 普通=50
+                messageRepository.updateMessageImportance(messageId, importance)
+
+                // 更新UI中的消息列表
+                _messages.value = _messages.value.map { msg ->
+                    if (msg.id == messageId) {
+                        msg.copy(importance = importance)
+                    } else {
+                        msg
+                    }
+                }
+
+                android.util.Log.d("ChatViewModel", "消息标记更新: $messageId -> importance=$importance")
+            } catch (e: Exception) {
+                android.util.Log.e("ChatViewModel", "标记消息失败", e)
+                _error.value = "标记失败：${e.message}"
+            }
+        }
+    }
+}
