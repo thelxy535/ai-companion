@@ -97,7 +97,9 @@ object AppModule {
         reviewDao = database.memoryReviewDao(),
         nodeDao = database.memoryNodeDao(),
         evidenceDao = database.memoryEvidenceDao(),
-        versionDao = database.memoryVersionDao()
+        versionDao = database.memoryVersionDao(),
+        relationDao = database.memoryRelationDao(),
+        retrievalDao = database.memoryRetrievalDao()
     )
 
     @Provides

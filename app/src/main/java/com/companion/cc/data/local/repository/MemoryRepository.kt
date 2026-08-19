@@ -6,12 +6,17 @@ import com.companion.cc.data.local.dao.MemoryNodeDao
 import com.companion.cc.data.local.dao.MemoryReviewDao
 import com.companion.cc.data.local.dao.MemorySourceDao
 import com.companion.cc.data.local.dao.MemoryVersionDao
+import com.companion.cc.data.local.dao.MemoryRelationDao
+import com.companion.cc.data.local.dao.MemoryRetrievalDao
 import com.companion.cc.data.local.database.AppDatabase
 import com.companion.cc.data.local.entity.MemoryEvidenceEntity
 import com.companion.cc.data.local.entity.MemoryNodeEntity
 import com.companion.cc.data.local.entity.MemoryReviewEntity
 import com.companion.cc.data.local.entity.MemorySourceEntity
 import com.companion.cc.data.local.entity.MemoryVersionEntity
+import com.companion.cc.data.local.entity.MemoryRelationEntity
+import com.companion.cc.data.local.entity.MemoryRetrievalTraceEntity
+import com.companion.cc.data.local.entity.MemoryRetrievalFeedbackEntity
 import kotlinx.coroutines.flow.Flow
 
 data class MemoryReviewDraft(
@@ -32,7 +37,9 @@ class MemoryRepository(
     private val reviewDao: MemoryReviewDao,
     private val nodeDao: MemoryNodeDao,
     private val evidenceDao: MemoryEvidenceDao,
-    private val versionDao: MemoryVersionDao
+    private val versionDao: MemoryVersionDao,
+    private val relationDao: MemoryRelationDao,
+    private val retrievalDao: MemoryRetrievalDao
 ) {
     fun observePendingReviews(scopeKey: String): Flow<List<MemoryReviewEntity>> = reviewDao.observePending(scopeKey)
     fun observeNodes(scopeKey: String, kind: String = "", query: String = ""): Flow<List<MemoryNodeEntity>> = nodeDao.observeFiltered(scopeKey, kind = kind, query = query)
@@ -41,6 +48,7 @@ class MemoryRepository(
 
     suspend fun getEvidence(nodeId: String): List<MemoryEvidenceEntity> = evidenceDao.findForNode(nodeId)
     suspend fun getVersions(nodeId: String): List<MemoryVersionEntity> = versionDao.findForNode(nodeId)
+    suspend fun getRelations(nodeId: String): List<MemoryRelationEntity> = relationDao.findForNode(nodeId)
 
     suspend fun createReview(draft: MemoryReviewDraft, createdAt: Long = System.currentTimeMillis()) {
         reviewDao.insert(
@@ -92,4 +100,38 @@ class MemoryRepository(
     suspend fun addSource(source: MemorySourceEntity) = sourceDao.insert(source)
 
     suspend fun addEvidence(evidence: List<MemoryEvidenceEntity>) = evidenceDao.insertAll(evidence)
+
+    suspend fun editNode(nodeId: String, title: String, content: String, importance: Int, now: Long = System.currentTimeMillis()): Result<Unit> = runCatching {
+        database.withTransaction {
+            val old = requireNotNull(nodeDao.findById(nodeId)) { "Memory node not found: $nodeId" }
+            val updated = old.copy(title = title, content = content, importance = importance.coerceIn(0, 100), updatedAt = now, currentVersion = old.currentVersion + 1)
+            nodeDao.update(updated)
+            versionDao.insert(MemoryVersionEntity(nodeId, updated.currentVersion, updated.kind, updated.title, updated.content, updated.importance, updated.confidence, updated.validFrom, updated.validUntil, "user edited", "user", now))
+        }
+    }
+
+    suspend fun softDeleteNode(nodeId: String, now: Long = System.currentTimeMillis()): Result<Unit> = setNodeStatus(nodeId, "deleted", "soft deleted", now)
+    suspend fun restoreNode(nodeId: String, now: Long = System.currentTimeMillis()): Result<Unit> = setNodeStatus(nodeId, "active", "restored", now)
+
+    suspend fun proposeRelation(relation: MemoryRelationEntity) = relationDao.insert(relation.copy(status = "proposed"))
+
+    suspend fun resolveRelation(relation: MemoryRelationEntity, accepted: Boolean, now: Long = System.currentTimeMillis()) = relationDao.update(
+        relation.copy(status = if (accepted) "active" else "rejected", updatedAt = now)
+    )
+
+    suspend fun recordRetrieval(trace: MemoryRetrievalTraceEntity) = retrievalDao.insertTrace(trace)
+    suspend fun recordFeedback(feedback: MemoryRetrievalFeedbackEntity) = retrievalDao.insertFeedback(feedback)
+
+    private suspend fun setNodeStatus(nodeId: String, status: String, reason: String, now: Long): Result<Unit> = runCatching {
+        database.withTransaction {
+            val old = requireNotNull(nodeDao.findById(nodeId)) { "Memory node not found: $nodeId" }
+            val updated = old.copy(status = status, updatedAt = now, currentVersion = old.currentVersion + 1)
+            nodeDao.update(updated)
+            versionDao.insert(MemoryVersionEntity(nodeId, updated.currentVersion, updated.kind, updated.title, updated.content, updated.importance, updated.confidence, updated.validFrom, updated.validUntil, reason, "user", now))
+        }
+    }
+
+    companion object {
+        fun isConflictStatus(status: String): Boolean = status == "conflict"
+    }
 }

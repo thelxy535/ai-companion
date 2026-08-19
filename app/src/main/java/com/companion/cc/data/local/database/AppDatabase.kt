@@ -25,6 +25,9 @@ import com.companion.cc.data.local.entity.MemoryReviewEntity
 import com.companion.cc.data.local.entity.MemoryNodeEntity
 import com.companion.cc.data.local.entity.MemoryEvidenceEntity
 import com.companion.cc.data.local.entity.MemoryVersionEntity
+import com.companion.cc.data.local.entity.MemoryRelationEntity
+import com.companion.cc.data.local.entity.MemoryRetrievalTraceEntity
+import com.companion.cc.data.local.entity.MemoryRetrievalFeedbackEntity
 import com.companion.cc.domain.usecase.MoodStateDao
 import com.companion.cc.domain.usecase.MoodStateEntity
 
@@ -44,9 +47,12 @@ import com.companion.cc.domain.usecase.MoodStateEntity
         MemoryReviewEntity::class,
         MemoryNodeEntity::class,
         MemoryEvidenceEntity::class,
-        MemoryVersionEntity::class
+        MemoryVersionEntity::class,
+        MemoryRelationEntity::class,
+        MemoryRetrievalTraceEntity::class,
+        MemoryRetrievalFeedbackEntity::class
     ],
-    version = 11,  // 鏂板锛氳嚜瀹氫箟瑙掕壊琛?    exportSchema = false
+    version = 12,  // 鏂板锛氳嚜瀹氫箟瑙掕壊琛?    exportSchema = false
 )
 @TypeConverters(VectorMemoryConverters::class, AppTypeConverters::class)
 abstract class AppDatabase : RoomDatabase() {
@@ -66,6 +72,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun memoryNodeDao(): com.companion.cc.data.local.dao.MemoryNodeDao
     abstract fun memoryEvidenceDao(): com.companion.cc.data.local.dao.MemoryEvidenceDao
     abstract fun memoryVersionDao(): com.companion.cc.data.local.dao.MemoryVersionDao
+    abstract fun memoryRelationDao(): com.companion.cc.data.local.dao.MemoryRelationDao
+    abstract fun memoryRetrievalDao(): com.companion.cc.data.local.dao.MemoryRetrievalDao
 
     companion object {
         @Volatile
@@ -87,7 +95,8 @@ abstract class AppDatabase : RoomDatabase() {
                         APP_MIGRATION_7_8,
                         APP_MIGRATION_8_9,
                         APP_MIGRATION_9_10,
-                        APP_MIGRATION_10_11
+                        APP_MIGRATION_10_11,
+                        APP_MIGRATION_11_12
                     )
                     .fallbackToDestructiveMigrationOnDowngrade()
                     .build()
@@ -97,3 +106,4 @@ abstract class AppDatabase : RoomDatabase() {
         }
     }
 }
+

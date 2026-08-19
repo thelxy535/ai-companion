@@ -352,3 +352,49 @@ val APP_MIGRATION_10_11 = object : Migration(10, 11) {
         database.execSQL("CREATE INDEX IF NOT EXISTS index_memory_versions_nodeId ON memory_versions(nodeId)")
     }
 }
+
+val APP_MIGRATION_11_12 = object : Migration(11, 12) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("""
+            CREATE TABLE IF NOT EXISTS memory_relations (
+                fromNodeId TEXT NOT NULL,
+                toNodeId TEXT NOT NULL,
+                relationType TEXT NOT NULL,
+                scopeKey TEXT NOT NULL,
+                weight REAL NOT NULL DEFAULT 0.5,
+                status TEXT NOT NULL DEFAULT 'proposed',
+                evidenceJson TEXT NOT NULL DEFAULT '[]',
+                createdAt INTEGER NOT NULL,
+                updatedAt INTEGER NOT NULL,
+                PRIMARY KEY(fromNodeId, toNodeId, relationType),
+                FOREIGN KEY(fromNodeId) REFERENCES memory_nodes(id) ON DELETE CASCADE,
+                FOREIGN KEY(toNodeId) REFERENCES memory_nodes(id) ON DELETE CASCADE
+            )
+        """.trimIndent())
+        database.execSQL("CREATE INDEX IF NOT EXISTS index_memory_relations_toNodeId ON memory_relations(toNodeId)")
+        database.execSQL("CREATE INDEX IF NOT EXISTS index_memory_relations_scopeKey_status ON memory_relations(scopeKey, status)")
+        database.execSQL("""
+            CREATE TABLE IF NOT EXISTS memory_retrieval_traces (
+                id TEXT NOT NULL PRIMARY KEY,
+                scopeKey TEXT NOT NULL,
+                query TEXT NOT NULL,
+                selectedNodeIdsJson TEXT NOT NULL,
+                explanationJson TEXT NOT NULL,
+                createdAt INTEGER NOT NULL,
+                durationMs INTEGER NOT NULL
+            )
+        """.trimIndent())
+        database.execSQL("CREATE INDEX IF NOT EXISTS index_memory_retrieval_traces_scopeKey_createdAt ON memory_retrieval_traces(scopeKey, createdAt)")
+        database.execSQL("""
+            CREATE TABLE IF NOT EXISTS memory_retrieval_feedback (
+                traceId TEXT NOT NULL,
+                nodeId TEXT NOT NULL,
+                feedback TEXT NOT NULL,
+                note TEXT NOT NULL DEFAULT '',
+                createdAt INTEGER NOT NULL,
+                PRIMARY KEY(traceId, nodeId)
+            )
+        """.trimIndent())
+        database.execSQL("CREATE INDEX IF NOT EXISTS index_memory_retrieval_feedback_nodeId ON memory_retrieval_feedback(nodeId)")
+    }
+}
