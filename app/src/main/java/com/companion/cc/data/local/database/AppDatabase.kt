@@ -61,6 +61,11 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun interactionTimeDao(): InteractionTimeDao
     abstract fun userEventDao(): UserEventDao
     abstract fun customCharacterDao(): CustomCharacterDao
+    abstract fun memorySourceDao(): com.companion.cc.data.local.dao.MemorySourceDao
+    abstract fun memoryReviewDao(): com.companion.cc.data.local.dao.MemoryReviewDao
+    abstract fun memoryNodeDao(): com.companion.cc.data.local.dao.MemoryNodeDao
+    abstract fun memoryEvidenceDao(): com.companion.cc.data.local.dao.MemoryEvidenceDao
+    abstract fun memoryVersionDao(): com.companion.cc.data.local.dao.MemoryVersionDao
 
     companion object {
         @Volatile

@@ -8,6 +8,7 @@ import com.companion.cc.domain.manager.AIProviderManager
 import com.companion.cc.domain.manager.CompanionStateManager
 import com.companion.cc.domain.manager.SystemPromptManager
 import com.companion.cc.domain.usecase.*
+import com.companion.cc.data.local.repository.MemoryRepository
 import com.google.gson.Gson
 import dagger.Module
 import dagger.Provides
@@ -87,6 +88,17 @@ object AppModule {
     fun provideCustomCharacterDao(database: AppDatabase): com.companion.cc.data.local.dao.CustomCharacterDao {
         return database.customCharacterDao()
     }
+
+    @Provides
+    @Singleton
+    fun provideMemoryRepository(database: AppDatabase): MemoryRepository = MemoryRepository(
+        database = database,
+        sourceDao = database.memorySourceDao(),
+        reviewDao = database.memoryReviewDao(),
+        nodeDao = database.memoryNodeDao(),
+        evidenceDao = database.memoryEvidenceDao(),
+        versionDao = database.memoryVersionDao()
+    )
 
     @Provides
     @Singleton
