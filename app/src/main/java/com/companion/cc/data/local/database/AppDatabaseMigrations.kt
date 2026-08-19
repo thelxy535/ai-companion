@@ -253,3 +253,102 @@ val APP_MIGRATION_9_10 = object : Migration(9, 10) {
         """)
     }
 }
+
+/**
+ * Migration 10 -> 11: Memory 2.0 source, review, node, evidence and version tables.
+ * Existing message, legacy memory and vector tables are intentionally untouched.
+ */
+val APP_MIGRATION_10_11 = object : Migration(10, 11) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("""
+            CREATE TABLE IF NOT EXISTS memory_sources (
+                id TEXT NOT NULL PRIMARY KEY,
+                scopeKey TEXT NOT NULL,
+                messageId TEXT,
+                contentSnapshot TEXT NOT NULL,
+                sourceType TEXT NOT NULL,
+                occurredAt INTEGER NOT NULL,
+                contentHash TEXT NOT NULL,
+                createdAt INTEGER NOT NULL
+            )
+        """.trimIndent())
+        database.execSQL("CREATE INDEX IF NOT EXISTS index_memory_sources_scopeKey_occurredAt ON memory_sources(scopeKey, occurredAt)")
+        database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_memory_sources_scopeKey_contentHash ON memory_sources(scopeKey, contentHash)")
+
+        database.execSQL("""
+            CREATE TABLE IF NOT EXISTS memory_reviews (
+                id TEXT NOT NULL PRIMARY KEY,
+                scopeKey TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                title TEXT NOT NULL,
+                content TEXT NOT NULL,
+                confidence REAL NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                sourceIdsJson TEXT NOT NULL DEFAULT '[]',
+                proposalHash TEXT NOT NULL,
+                createdAt INTEGER NOT NULL,
+                resolvedAt INTEGER,
+                resolutionNote TEXT NOT NULL DEFAULT ''
+            )
+        """.trimIndent())
+        database.execSQL("CREATE INDEX IF NOT EXISTS index_memory_reviews_scopeKey_status_createdAt ON memory_reviews(scopeKey, status, createdAt)")
+        database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_memory_reviews_scopeKey_proposalHash ON memory_reviews(scopeKey, proposalHash)")
+
+        database.execSQL("""
+            CREATE TABLE IF NOT EXISTS memory_nodes (
+                id TEXT NOT NULL PRIMARY KEY,
+                scopeKey TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                subjectRole TEXT NOT NULL,
+                subjectKey TEXT NOT NULL,
+                title TEXT NOT NULL,
+                content TEXT NOT NULL,
+                importance INTEGER NOT NULL DEFAULT 50,
+                confidence REAL NOT NULL DEFAULT 0.5,
+                validFrom INTEGER NOT NULL,
+                validUntil INTEGER,
+                status TEXT NOT NULL DEFAULT 'active',
+                createdAt INTEGER NOT NULL,
+                updatedAt INTEGER NOT NULL,
+                currentVersion INTEGER NOT NULL DEFAULT 1
+            )
+        """.trimIndent())
+        database.execSQL("CREATE INDEX IF NOT EXISTS index_memory_nodes_scopeKey_status_updatedAt ON memory_nodes(scopeKey, status, updatedAt)")
+        database.execSQL("CREATE INDEX IF NOT EXISTS index_memory_nodes_scopeKey_kind_createdAt ON memory_nodes(scopeKey, kind, createdAt)")
+
+        database.execSQL("""
+            CREATE TABLE IF NOT EXISTS memory_evidence (
+                nodeId TEXT NOT NULL,
+                sourceId TEXT NOT NULL,
+                evidenceRole TEXT NOT NULL DEFAULT 'support',
+                confidence REAL NOT NULL DEFAULT 0.5,
+                summarySnapshot TEXT NOT NULL DEFAULT '',
+                createdAt INTEGER NOT NULL,
+                PRIMARY KEY(nodeId, sourceId),
+                FOREIGN KEY(nodeId) REFERENCES memory_nodes(id) ON DELETE CASCADE,
+                FOREIGN KEY(sourceId) REFERENCES memory_sources(id) ON DELETE RESTRICT
+            )
+        """.trimIndent())
+        database.execSQL("CREATE INDEX IF NOT EXISTS index_memory_evidence_sourceId ON memory_evidence(sourceId)")
+
+        database.execSQL("""
+            CREATE TABLE IF NOT EXISTS memory_versions (
+                nodeId TEXT NOT NULL,
+                version INTEGER NOT NULL,
+                kind TEXT NOT NULL,
+                title TEXT NOT NULL,
+                content TEXT NOT NULL,
+                importance INTEGER NOT NULL,
+                confidence REAL NOT NULL,
+                validFrom INTEGER NOT NULL,
+                validUntil INTEGER,
+                changeReason TEXT NOT NULL,
+                actor TEXT NOT NULL,
+                createdAt INTEGER NOT NULL,
+                PRIMARY KEY(nodeId, version),
+                FOREIGN KEY(nodeId) REFERENCES memory_nodes(id) ON DELETE CASCADE
+            )
+        """.trimIndent())
+        database.execSQL("CREATE INDEX IF NOT EXISTS index_memory_versions_nodeId ON memory_versions(nodeId)")
+    }
+}

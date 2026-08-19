@@ -1,4 +1,4 @@
-package com.companion.cc.data.local.database
+﻿package com.companion.cc.data.local.database
 
 import android.content.Context
 import androidx.room.Database
@@ -20,6 +20,11 @@ import com.companion.cc.data.local.entity.UserEventEntity
 import com.companion.cc.data.local.entity.UserProfileEntity
 import com.companion.cc.data.local.entity.VectorMemoryConverters
 import com.companion.cc.data.local.entity.VectorMemoryEntity
+import com.companion.cc.data.local.entity.MemorySourceEntity
+import com.companion.cc.data.local.entity.MemoryReviewEntity
+import com.companion.cc.data.local.entity.MemoryNodeEntity
+import com.companion.cc.data.local.entity.MemoryEvidenceEntity
+import com.companion.cc.data.local.entity.MemoryVersionEntity
 import com.companion.cc.domain.usecase.MoodStateDao
 import com.companion.cc.domain.usecase.MoodStateEntity
 
@@ -34,10 +39,14 @@ import com.companion.cc.domain.usecase.MoodStateEntity
         com.companion.cc.data.local.entity.MessageTagEntity::class,
         InteractionTimeEntity::class,
         UserEventEntity::class,
-        CustomCharacterEntity::class
+        CustomCharacterEntity::class,
+        MemorySourceEntity::class,
+        MemoryReviewEntity::class,
+        MemoryNodeEntity::class,
+        MemoryEvidenceEntity::class,
+        MemoryVersionEntity::class
     ],
-    version = 10,  // 新增：自定义角色表
-    exportSchema = false
+    version = 11,  // 鏂板锛氳嚜瀹氫箟瑙掕壊琛?    exportSchema = false
 )
 @TypeConverters(VectorMemoryConverters::class, AppTypeConverters::class)
 abstract class AppDatabase : RoomDatabase() {
@@ -62,8 +71,7 @@ abstract class AppDatabase : RoomDatabase() {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
-                    "cc_database"  // 使用与设备一致的数据库名称
-                )
+                    "cc_database"  // 浣跨敤涓庤澶囦竴鑷寸殑鏁版嵁搴撳悕绉?                )
                     .addMigrations(
                         APP_MIGRATION_1_2,
                         APP_MIGRATION_2_3,
@@ -73,9 +81,10 @@ abstract class AppDatabase : RoomDatabase() {
                         APP_MIGRATION_6_7,
                         APP_MIGRATION_7_8,
                         APP_MIGRATION_8_9,
-                        APP_MIGRATION_9_10
+                        APP_MIGRATION_9_10,
+                        APP_MIGRATION_10_11
                     )
-                    .fallbackToDestructiveMigration()  // 如果迁移失败，重建数据库
+                    .fallbackToDestructiveMigrationOnDowngrade()
                     .build()
                 INSTANCE = instance
                 instance
