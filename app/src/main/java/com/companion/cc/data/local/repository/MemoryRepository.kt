@@ -77,6 +77,13 @@ class MemoryRepository(
         }
     }
 
+    suspend fun resolveReview(reviewId: String, status: String, note: String = "", now: Long = System.currentTimeMillis()): Result<Unit> = runCatching {
+        require(status in setOf("rejected", "deferred", "conflict"))
+        val review = requireNotNull(reviewDao.findById(reviewId)) { "Memory review not found: $reviewId" }
+        require(review.status == "pending" || review.status == "conflict") { "Memory review is already resolved" }
+        reviewDao.update(review.copy(status = status, resolvedAt = if (status == "deferred") null else now, resolutionNote = note))
+    }
+
     suspend fun addSource(source: MemorySourceEntity) = sourceDao.insert(source)
 
     suspend fun addEvidence(evidence: List<MemoryEvidenceEntity>) = evidenceDao.insertAll(evidence)

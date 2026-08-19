@@ -26,7 +26,9 @@ import androidx.lifecycle.LifecycleEventObserver
 import com.companion.cc.domain.model.Message
 import com.companion.cc.domain.model.MessageRole
 import com.companion.cc.domain.model.MessagesByDate
-import com.companion.cc.ui.theme.FunctionalColors
+import com.companion.cc.ui.theme.CompactGlassSurface
+import com.companion.cc.ui.theme.GlassSurface
+import com.companion.cc.ui.theme.LocalVisualTheme
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
@@ -39,6 +41,7 @@ import java.util.*
 @Composable
 fun MemoryTreeScreen(
     onNavigateBack: () -> Unit,
+    onNavigateToReview: () -> Unit = {},
     viewModel: MemoryTreeViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -73,7 +76,12 @@ fun MemoryTreeScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            GlassSurface(
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(0.dp),
+                useStrongFill = true
+            ) {
+                TopAppBar(
                 title = {
                     Column {
                         Text(
@@ -94,6 +102,9 @@ fun MemoryTreeScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = onNavigateToReview) {
+                        Icon(Icons.Default.Verified, "审核记忆")
+                    }
                     // 搜索按钮
                     IconButton(onClick = { showSearchDialog = true }) {
                         Icon(Icons.Default.Search, "搜索")
@@ -204,11 +215,12 @@ fun MemoryTreeScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                    containerColor = Color.Transparent
                 )
             )
+            }
         },
-        containerColor = MaterialTheme.colorScheme.background
+        containerColor = Color.Transparent
     ) { padding ->
         if (isLoading) {
             Box(
@@ -452,9 +464,9 @@ private fun MemoryDateGroup(
 
     Column {
         // 日期标题
-        Surface(
+        CompactGlassSurface(
             onClick = { isExpanded = !isExpanded },
-            color = MaterialTheme.colorScheme.surfaceVariant,
+            fillOverride = MaterialTheme.colorScheme.surfaceVariant,
             shape = MaterialTheme.shapes.small
         ) {
             Row(
@@ -506,9 +518,10 @@ private fun MemoryDateGroup(
 
 @Composable
 private fun MemoryItem(message: Message) {
-    Surface(
+    val visualTheme = LocalVisualTheme.current
+    CompactGlassSurface(
         onClick = { /* 打开详情 */ },
-        color = Color.Transparent,
+        fillOverride = Color.Transparent,
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -551,9 +564,9 @@ private fun MemoryItem(message: Message) {
 
             // 重要性标记
             if (message.importance > 80) {
-                Surface(
+                CompactGlassSurface(
                     shape = MaterialTheme.shapes.extraSmall,
-                    color = FunctionalColors.importantBg
+                    fillOverride = visualTheme.tokens.status.importanceContainer
                 ) {
                     Box(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
@@ -562,7 +575,7 @@ private fun MemoryItem(message: Message) {
                         Text(
                             text = "重要",
                             style = MaterialTheme.typography.labelSmall,
-                            color = FunctionalColors.importantText
+                            color = visualTheme.tokens.status.importance
                         )
                     }
                 }
