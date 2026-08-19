@@ -42,6 +42,7 @@ import java.util.*
 fun MemoryTreeScreen(
     onNavigateBack: () -> Unit,
     onNavigateToReview: () -> Unit = {},
+    onNavigateToLibrary: () -> Unit = {},
     viewModel: MemoryTreeViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -102,6 +103,9 @@ fun MemoryTreeScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = onNavigateToLibrary) {
+                        Icon(Icons.Default.MenuBook, "记忆库")
+                    }
                     IconButton(onClick = onNavigateToReview) {
                         Icon(Icons.Default.Verified, "审核记忆")
                     }

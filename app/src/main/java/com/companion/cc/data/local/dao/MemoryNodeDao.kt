@@ -16,8 +16,8 @@ interface MemoryNodeDao {
     @Query("SELECT * FROM memory_nodes WHERE id = :id")
     suspend fun findById(id: String): MemoryNodeEntity?
 
-    @Query("SELECT * FROM memory_nodes WHERE scopeKey = :scopeKey AND status = 'active' ORDER BY updatedAt DESC")
-    fun observeActive(scopeKey: String): Flow<List<MemoryNodeEntity>>
+    @Query("SELECT * FROM memory_nodes WHERE scopeKey = :scopeKey AND status = :status AND (:kind = '' OR kind = :kind) AND (:query = '' OR title LIKE '%' || :query || '%' OR content LIKE '%' || :query || '%') ORDER BY updatedAt DESC")
+    fun observeFiltered(scopeKey: String, status: String = "active", kind: String = "", query: String = ""): Flow<List<MemoryNodeEntity>>
 
     @Update
     suspend fun update(node: MemoryNodeEntity)

@@ -20,6 +20,12 @@ sealed class Screen(val route: String) {
     object MemoryReview : Screen("memory_review/{companionId}") {
         fun createRoute(companionId: String) = "memory_review/$companionId"
     }
+    object MemoryLibrary : Screen("memory_library/{companionId}") {
+        fun createRoute(companionId: String) = "memory_library/$companionId"
+    }
+    object MemoryDetail : Screen("memory_detail/{nodeId}") {
+        fun createRoute(nodeId: String) = "memory_detail/$nodeId"
+    }
     object Stats : Screen("stats/{companionId}") {
         fun createRoute(companionId: String) = "stats/$companionId"
     }

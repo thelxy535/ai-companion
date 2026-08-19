@@ -11,6 +11,8 @@ import com.companion.cc.ui.favorites.FavoritesScreen
 import com.companion.cc.ui.home.ImmersiveHomeScreen
 import com.companion.cc.ui.memory.MemoryTreeScreen
 import com.companion.cc.ui.memory.MemoryReviewScreen
+import com.companion.cc.ui.memory.MemoryLibraryScreen
+import com.companion.cc.ui.memory.MemoryDetailScreen
 import com.companion.cc.ui.settings.SettingsScreen
 import com.companion.cc.ui.splash.SplashScreen
 import com.companion.cc.ui.stats.ImmersiveStatsScreen
@@ -81,7 +83,8 @@ fun NavGraph(navController: NavHostController) {
             VisualScene(route = VisualRoute.UTILITY, companionId = companionId) {
                 MemoryTreeScreen(
                     onNavigateBack = { navController.navigateUp() },
-                    onNavigateToReview = { navController.navigate(Screen.MemoryReview.createRoute(companionId)) }
+                    onNavigateToReview = { navController.navigate(Screen.MemoryReview.createRoute(companionId)) },
+                    onNavigateToLibrary = { navController.navigate(Screen.MemoryLibrary.createRoute(companionId)) }
                 )
             }
         }
@@ -93,6 +96,24 @@ fun NavGraph(navController: NavHostController) {
                     companionId = companionId,
                     onNavigateBack = { navController.navigateUp() }
                 )
+            }
+        }
+
+        composable(Screen.MemoryLibrary.route) { backStackEntry ->
+            val companionId = backStackEntry.arguments?.getString("companionId") ?: "xiaocan"
+            VisualScene(route = VisualRoute.UTILITY, companionId = companionId) {
+                MemoryLibraryScreen(
+                    companionId = companionId,
+                    onNavigateBack = { navController.navigateUp() },
+                    onOpenDetail = { nodeId -> navController.navigate(Screen.MemoryDetail.createRoute(nodeId)) }
+                )
+            }
+        }
+
+        composable(Screen.MemoryDetail.route) { backStackEntry ->
+            val nodeId = backStackEntry.arguments?.getString("nodeId") ?: ""
+            VisualScene(route = VisualRoute.UTILITY) {
+                MemoryDetailScreen(nodeId = nodeId, onNavigateBack = { navController.navigateUp() })
             }
         }
 

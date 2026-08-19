@@ -35,7 +35,12 @@ class MemoryRepository(
     private val versionDao: MemoryVersionDao
 ) {
     fun observePendingReviews(scopeKey: String): Flow<List<MemoryReviewEntity>> = reviewDao.observePending(scopeKey)
-    fun observeActiveNodes(scopeKey: String): Flow<List<MemoryNodeEntity>> = nodeDao.observeActive(scopeKey)
+    fun observeNodes(scopeKey: String, kind: String = "", query: String = ""): Flow<List<MemoryNodeEntity>> = nodeDao.observeFiltered(scopeKey, kind = kind, query = query)
+
+    suspend fun findNode(nodeId: String): MemoryNodeEntity? = nodeDao.findById(nodeId)
+
+    suspend fun getEvidence(nodeId: String): List<MemoryEvidenceEntity> = evidenceDao.findForNode(nodeId)
+    suspend fun getVersions(nodeId: String): List<MemoryVersionEntity> = versionDao.findForNode(nodeId)
 
     suspend fun createReview(draft: MemoryReviewDraft, createdAt: Long = System.currentTimeMillis()) {
         reviewDao.insert(
