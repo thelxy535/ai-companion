@@ -15,6 +15,7 @@ import com.companion.cc.domain.model.VisionError
 import com.companion.cc.domain.model.toChatError
 import com.companion.cc.domain.repository.MessageRepository
 import com.companion.cc.domain.usecase.*
+import com.companion.cc.domain.memory.MemoryRetrievalService
 import com.companion.cc.util.Logger
 import com.companion.cc.util.NetworkMonitor
 import com.companion.cc.util.NetworkState
@@ -63,6 +64,7 @@ class ChatViewModel @Inject constructor(
 
     // 应用级别的 Scope（替代 GlobalScope）
     @ApplicationScope private val applicationScope: CoroutineScope
+    private val memoryRetrievalService: MemoryRetrievalService,
 ) : ViewModel() {
 
     private val drafts = mutableMapOf<String, String>()
@@ -76,6 +78,16 @@ class ChatViewModel @Inject constructor(
     )
 
     private fun getUserId(): String = userIdFlow.value
+
+    private suspend fun appendMemory2Context(basePrompt: String, companionId: String, query: String): String {
+        return runCatching {
+            val result = memoryRetrievalService.retrieve(query, "companion:$companionId")
+            if (result.memories.isEmpty()) basePrompt else basePrompt + "\n\n【已确认的长期记忆】\n" + result.memories.joinToString("\n") { "- ${it.node.content}" }
+        }.getOrElse { error ->
+            Logger.w("ChatViewModel", "Memory 2.0 retrieval fallback: ${error.message}")
+            basePrompt
+        }
+    }
 
     // ==================== 基础状态 ====================
 
@@ -432,11 +444,11 @@ class ChatViewModel @Inject constructor(
                 )
 
                 // 人格配置
-                val systemPrompt = personalityManager.generateSystemPrompt(
+                val systemPrompt = appendMemory2Context(personalityManager.generateSystemPrompt(
                     companionId = companionId,
                     userId = userId,
                     memoryContext = memoryContext
-                )
+                ), companionId, enhancedUserMessage)
 
                 // API 参数
                 val personality = personalityManager.getCompanionConfig(companionId)
@@ -660,11 +672,11 @@ class ChatViewModel @Inject constructor(
                 val personality = personalityManager.getCompanionConfig(companionId)
 
                 // 使用完整记忆上下文生成 SystemPrompt
-                val systemPrompt = personalityManager.generateSystemPrompt(
+                val systemPrompt = appendMemory2Context(personalityManager.generateSystemPrompt(
                     companionId = companionId,
                     userId = userId,
                     memoryContext = memoryContext
-                )
+                ), companionId, content)
 
                 // === 6. 思考链（可选，失败不影响主流程）===
                 try {
