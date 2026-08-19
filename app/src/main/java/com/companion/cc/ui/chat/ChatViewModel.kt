@@ -39,6 +39,7 @@ class ChatViewModel @Inject constructor(
     private val getMessagesUseCase: GetMessagesUseCase,
     private val sendMessageUseCase: SendMessageUseCase,
     private val streamSendMessageUseCase: StreamSendMessageUseCase,
+    private val memoryRetrievalService: MemoryRetrievalService,
     private val steppedThinkingUseCase: SteppedThinkingUseCase,
     private val vectorMemoryManagementUseCase: VectorMemoryManagementUseCase,
     private val detectEmotionUseCase: DetectEmotionUseCase,
@@ -64,7 +65,6 @@ class ChatViewModel @Inject constructor(
 
     // 应用级别的 Scope（替代 GlobalScope）
     @ApplicationScope private val applicationScope: CoroutineScope
-    private val memoryRetrievalService: MemoryRetrievalService,
 ) : ViewModel() {
 
     private val drafts = mutableMapOf<String, String>()
