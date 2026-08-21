@@ -1,0 +1,24 @@
+[Unit]
+Description=CC Switch local vision gateway
+After=network.target ollama.service
+Wants=ollama.service
+
+[Service]
+Type=simple
+User=ccvision
+Group=ccvision
+WorkingDirectory=/opt/cc-vision-gateway
+EnvironmentFile=/etc/cc-vision-gateway/vision-gateway.env
+ExecStart=/opt/cc-vision-gateway/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8787 --workers 1 --no-access-log
+Restart=on-failure
+RestartSec=5s
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/data/cc-vision-gateway
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

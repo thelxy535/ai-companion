@@ -1,0 +1,29 @@
+# Local Caddy reverse-proxy template for CC Vision Gateway.
+# Keep the gateway itself bound to loopback. Replace the placeholder hostname only
+# after DNS, 80/443 reachability, ACME eligibility, and the gateway's local
+# security checks have been verified.
+
+vision.example.invalid {
+    # Do not write request URLs, authorization headers, or user input to access logs.
+    log {
+        output discard
+    }
+
+    # Base64 expands the 4 MiB binary image limit to roughly 5.34 MiB. The
+    # application independently enforces the 4 MiB decoded-image limit.
+    request_body {
+        max_size 6MB
+    }
+
+    reverse_proxy 127.0.0.1:8787 {
+        transport http {
+            response_header_timeout 270s
+        }
+    }
+
+    header {
+        -Server
+        X-Content-Type-Options nosniff
+        Referrer-Policy no-referrer
+    }
+}

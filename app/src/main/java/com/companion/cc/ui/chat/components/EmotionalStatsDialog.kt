@@ -14,6 +14,7 @@ import androidx.compose.ui.window.Dialog
 import com.companion.cc.domain.model.EmotionalState
 import com.companion.cc.domain.model.Mood
 import com.companion.cc.ui.chat.ConversationStats
+import com.companion.cc.ui.theme.GlassDialogSurface
 
 /**
  * 情感状态弹出对话框
@@ -25,10 +26,8 @@ fun EmotionalStatsDialog(
     onDismiss: () -> Unit
 ) {
     Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 6.dp
+        GlassDialogSurface(
+            shape = RoundedCornerShape(16.dp)
         ) {
             Column(
                 modifier = Modifier

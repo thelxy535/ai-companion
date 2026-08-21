@@ -63,7 +63,6 @@ class VisionManager @Inject constructor(
         conversationContext: List<String> = emptyList()
     ): VisionAnalysis = withContext(Dispatchers.IO) {
         Logger.d("VisionManager", "========== 开始图片分析 ==========")
-        Logger.d("VisionManager", "imageUri: $imageUri, userText: $userText")
 
         // 1. 检查 Provider 是否可用
         val isAvailable = visionProvider.isAvailable()
@@ -71,11 +70,15 @@ class VisionManager @Inject constructor(
 
         if (!isAvailable) {
             Logger.e("VisionManager", "视觉模型不可用")
-            throw VisionError.ApiError("视觉模型未配置或不可用，请在设置中配置 Gemini API Key")
+            throw VisionError.ApiError("所选图片理解服务未配置或不可用，请在设置中完成配置")
         }
 
         // 2. 计算缓存 Key
-        val cacheKey = computeCacheKey(imageUri, userText)
+        val cacheKey = computeCacheKey(
+            imageUri = imageUri,
+            userText = userText,
+            providerIdentity = visionProvider.cacheIdentity()
+        )
 
         // 3. 检查缓存
         analysisCache[cacheKey]?.let { cached ->
@@ -106,7 +109,7 @@ class VisionManager @Inject constructor(
                 timestamp = System.currentTimeMillis()
             )
 
-            Logger.d("VisionManager", "视觉理解完成: ${analysis.toNaturalLanguage()}")
+            Logger.d("VisionManager", "视觉理解完成")
             return@withContext analysis
 
         } catch (e: VisionError) {
@@ -195,7 +198,11 @@ class VisionManager @Inject constructor(
     /**
      * 计算缓存 Key（图片内容 + 用户文字的 hash）
      */
-    private suspend fun computeCacheKey(imageUri: Uri, userText: String): String = withContext(Dispatchers.IO) {
+    private suspend fun computeCacheKey(
+        imageUri: Uri,
+        userText: String,
+        providerIdentity: String
+    ): String = withContext(Dispatchers.IO) {
         try {
             val digest = MessageDigest.getInstance("MD5")
 
@@ -208,8 +215,10 @@ class VisionManager @Inject constructor(
                 }
             }
 
-            // Hash 用户文字
+            // Hash 用户文字和所选服务，避免服务切换后复用另一服务的结果。
             digest.update(userText.toByteArray())
+            digest.update(0.toByte())
+            digest.update(providerIdentity.toByteArray())
 
             // 转换为 Hex 字符串
             digest.digest().joinToString("") { "%02x".format(it) }
@@ -217,7 +226,7 @@ class VisionManager @Inject constructor(
         } catch (e: Exception) {
             Logger.e("VisionManager", "计算缓存 Key 失败", e)
             // 降级：使用 URI + 文字的简单 hash
-            "${imageUri.hashCode()}_${userText.hashCode()}"
+            "${imageUri.hashCode()}_${userText.hashCode()}_${providerIdentity.hashCode()}"
         }
     }
 

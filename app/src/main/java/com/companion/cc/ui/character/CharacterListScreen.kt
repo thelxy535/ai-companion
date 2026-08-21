@@ -1,6 +1,7 @@
 package com.companion.cc.ui.character
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -12,10 +13,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.companion.cc.domain.model.ChatCharacter
 import com.companion.cc.domain.model.CustomCharacter
+import com.companion.cc.ui.theme.CompactGlassSurface
+import com.companion.cc.ui.theme.GlassSurface
 
 /**
  * 角色列表界面
@@ -30,23 +35,33 @@ fun CharacterListScreen(
     viewModel: CharacterCustomizationViewModel = hiltViewModel()
 ) {
     val characters by viewModel.characters.collectAsState()
-    val isLoading by viewModel.isLoading.collectAsState()
+    val saveState by viewModel.saveState.collectAsState()
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            GlassSurface(
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(0.dp),
+                useStrongFill = true
+            ) {
+                TopAppBar(
                 title = { Text("我的角色") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.Default.ArrowBack, "返回")
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent
+                )
             )
+            }
         },
+        containerColor = Color.Transparent,
         floatingActionButton = {
             FloatingActionButton(
                 onClick = {
-                    viewModel.startCreateCharacter()
+                    viewModel.startNewCharacter()
                     onCreateCharacter()
                 }
             ) {
@@ -54,22 +69,13 @@ fun CharacterListScreen(
             }
         }
     ) { padding ->
-        if (isLoading) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator()
-            }
-        } else if (characters.isEmpty()) {
+        if (characters.isEmpty()) {
             EmptyState(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding),
                 onCreateCharacter = {
-                    viewModel.startCreateCharacter()
+                    viewModel.startNewCharacter()
                     onCreateCharacter()
                 }
             )
@@ -85,7 +91,7 @@ fun CharacterListScreen(
                     items = characters,
                     key = { it.id }
                 ) { character ->
-                    CharacterCard(
+                    CharacterRow(
                         character = character,
                         onStartChat = { onStartChat(character.id) },
                         onEdit = { onEditCharacter(character.id) },
@@ -138,20 +144,21 @@ fun EmptyState(
 }
 
 /**
- * 角色卡片
+ * 角色行
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CharacterCard(
-    character: CustomCharacter,
+fun CharacterRow(
+    character: ChatCharacter,
     onStartChat: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
 
-    Card(
+    CompactGlassSurface(
         modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
         onClick = onStartChat
     ) {
         Row(
@@ -161,19 +168,18 @@ fun CharacterCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             // 头像
-            Surface(
+            Box(
+                contentAlignment = Alignment.Center,
                 modifier = Modifier
                     .size(56.dp)
-                    .clip(CircleShape),
-                color = MaterialTheme.colorScheme.primaryContainer
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer)
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        text = character.name.take(1),
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                }
+                Text(
+                    text = character.name.take(1),
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
             }
 
             Spacer(modifier = Modifier.width(16.dp))
@@ -198,39 +204,35 @@ fun CharacterCard(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // 特质标签
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    character.personality.let { p ->
-                        if (p.extraversion > 0.7f) {
-                            TraitChip("外向")
-                        }
-                        if (p.agreeableness > 0.7f) {
-                            TraitChip("友善")
-                        }
-                        if (p.openness > 0.7f) {
-                            TraitChip("创造力")
-                        }
-                    }
+                // 特质标签（仅自定义角色显示）
+                if (character is ChatCharacter.Custom) {
+                    // Custom personality is stored as string, so we skip trait chips
+                    // or parse the personality string if needed
+                    Text(
+                        text = "自定义角色",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
                 }
             }
 
-            // 操作按钮
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                IconButton(onClick = onEdit) {
-                    Icon(
-                        Icons.Default.Edit,
-                        contentDescription = "编辑",
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                }
-                IconButton(onClick = { showDeleteDialog = true }) {
-                    Icon(
-                        Icons.Default.Delete,
-                        contentDescription = "删除",
-                        tint = MaterialTheme.colorScheme.error
-                    )
+            // 操作按钮（仅自定义角色显示编辑和删除）
+            if (character.isCustom()) {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    IconButton(onClick = onEdit) {
+                        Icon(
+                            Icons.Default.Edit,
+                            contentDescription = "编辑",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    IconButton(onClick = { showDeleteDialog = true }) {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = "删除",
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
                 }
             }
         }
@@ -269,9 +271,10 @@ fun CharacterCard(
  */
 @Composable
 fun TraitChip(text: String) {
-    Surface(
-        shape = MaterialTheme.shapes.small,
-        color = MaterialTheme.colorScheme.secondaryContainer
+    Box(
+        modifier = Modifier
+            .clip(MaterialTheme.shapes.small)
+            .background(MaterialTheme.colorScheme.secondaryContainer)
     ) {
         Text(
             text = text,

@@ -4,8 +4,6 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -20,12 +18,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
+import com.companion.cc.ui.theme.GlassDialogSurface
 
 /**
  * 头像设置对话框
@@ -62,11 +60,9 @@ fun AvatarSettingsDialog(
     }
 
     Dialog(onDismissRequest = onDismiss) {
-        Surface(
+        GlassDialogSurface(
             modifier = Modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.large,
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 8.dp
+            shape = MaterialTheme.shapes.large
         ) {
             Column(
                 modifier = Modifier.padding(24.dp),
@@ -192,67 +188,54 @@ fun AvatarSettingItem(
     defaultEmoji: String? = null,
     onClick: () -> Unit
 ) {
-    Surface(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
-        color = MaterialTheme.colorScheme.surface
+            .heightIn(min = 64.dp)
+            .clickable(onClick = onClick)
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Box(
+            modifier = Modifier.size(48.dp),
+            contentAlignment = Alignment.Center
         ) {
-            // 头像预览
-            Box(
-                modifier = Modifier.size(48.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                if (avatarUrl != null) {
-                    AsyncImage(
-                        model = avatarUrl,
-                        contentDescription = title,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(CircleShape),
-                        contentScale = ContentScale.Crop
-                    )
-                } else if (defaultEmoji != null) {
-                    Text(
-                        text = defaultEmoji,
-                        style = MaterialTheme.typography.headlineMedium
-                    )
-                } else {
-                    Icon(
-                        imageVector = Icons.Default.AccountCircle,
-                        contentDescription = title,
-                        modifier = Modifier.fillMaxSize(),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.width(16.dp))
-
-            // 标题
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Medium
+            if (avatarUrl != null) {
+                AsyncImage(
+                    model = avatarUrl,
+                    contentDescription = title,
+                    modifier = Modifier.fillMaxSize().clip(CircleShape),
+                    contentScale = ContentScale.Crop
                 )
-                Text(
-                    text = if (avatarUrl != null) "已自定义" else "使用默认",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+            } else if (defaultEmoji != null) {
+                Text(defaultEmoji, style = MaterialTheme.typography.headlineMedium)
+            } else {
+                Icon(
+                    imageVector = Icons.Default.AccountCircle,
+                    contentDescription = title,
+                    modifier = Modifier.fillMaxSize(),
+                    tint = MaterialTheme.colorScheme.primary
                 )
             }
+        }
 
-            // 编辑图标
-            Icon(
-                imageVector = Icons.Default.Edit,
-                contentDescription = "编辑",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
+        Spacer(modifier = Modifier.width(16.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                text = if (avatarUrl != null) "已自定义" else "使用默认",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+        Icon(
+            imageVector = Icons.Default.Edit,
+            contentDescription = "编辑",
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }

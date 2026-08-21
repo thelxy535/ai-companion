@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import android.util.Log
 import com.companion.cc.ui.chat.NaturalChatScreen
 import com.companion.cc.ui.companion.CompanionDetailScreen
 import com.companion.cc.ui.data.ImmersiveDataManagementScreen
@@ -60,11 +61,11 @@ fun NavGraph(navController: NavHostController) {
                 NaturalChatScreen(
                     companionId = companionId,
                     onNavigateBack = { navController.navigateUp() },
-                    onNavigateToMemory = { navController.navigate(Screen.Memory.createRoute(companionId)) },
-                    onNavigateToStats = { navController.navigate(Screen.Stats.createRoute(companionId)) },
-                    onNavigateToData = { navController.navigate(Screen.DataManagement.createRoute(companionId)) },
-                    onNavigateToSettings = { navController.navigate(Screen.Settings.route) },
-                    onNavigateToFavorites = { navController.navigate(Screen.Favorites.createRoute(companionId)) },
+                     onNavigateToMemory = { navController.navigateSafely(Screen.Memory.createRoute(companionId)) },
+                     onNavigateToStats = { navController.navigateSafely(Screen.Stats.createRoute(companionId)) },
+                     onNavigateToData = { navController.navigateSafely(Screen.DataManagement.createRoute(companionId)) },
+                     onNavigateToSettings = { navController.navigateSafely(Screen.Settings.route) },
+                     onNavigateToFavorites = { navController.navigateSafely(Screen.Favorites.createRoute(companionId)) },
                     onNavigateToCompanionDetail = { navController.navigate(Screen.CompanionDetail.createRoute(companionId)) }
                 )
             }
@@ -180,14 +181,13 @@ fun NavGraph(navController: NavHostController) {
             VisualScene(route = VisualRoute.CHAT, companionId = characterId) {
                 NaturalChatScreen(
                     companionId = characterId,
-                    isCustomCharacter = true,
                     onNavigateBack = { navController.navigateUp() },
-                    onNavigateToMemory = { navController.navigate(Screen.Memory.createRoute(characterId)) },
-                    onNavigateToStats = { navController.navigate(Screen.Stats.createRoute(characterId)) },
-                    onNavigateToData = { navController.navigate(Screen.DataManagement.createRoute(characterId)) },
-                    onNavigateToSettings = { navController.navigate(Screen.Settings.route) },
-                    onNavigateToFavorites = { navController.navigate(Screen.Favorites.createRoute(characterId)) },
-                    onNavigateToCompanionDetail = { navController.navigate(Screen.CompanionDetail.createRoute(characterId)) }
+                    onNavigateToMemory = { navController.navigateSafely(Screen.Memory.createRoute(characterId)) },
+                    onNavigateToStats = { navController.navigateSafely(Screen.Stats.createRoute(characterId)) },
+                    onNavigateToData = { navController.navigateSafely(Screen.DataManagement.createRoute(characterId)) },
+                    onNavigateToSettings = { navController.navigateSafely(Screen.Settings.route) },
+                    onNavigateToFavorites = { navController.navigateSafely(Screen.Favorites.createRoute(characterId)) },
+                    onNavigateToCompanionDetail = { navController.navigateSafely(Screen.CompanionDetail.createRoute(characterId)) }
                 )
             }
         }
@@ -210,5 +210,15 @@ fun NavGraph(navController: NavHostController) {
                 )
             }
         }
+    }
+}
+
+internal fun NavHostController.navigateSafely(route: String) {
+    try {
+        Log.d("CCNavigation", "navigate route=$route")
+        navigate(route)
+    } catch (error: RuntimeException) {
+        Log.e("CCNavigation", "navigation failed route=$route", error)
+        throw error
     }
 }

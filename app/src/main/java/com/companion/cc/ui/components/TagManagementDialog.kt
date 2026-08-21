@@ -23,6 +23,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.companion.cc.data.local.entity.TagEntity
+import com.companion.cc.ui.theme.GlassDialogSurface
+import com.companion.cc.ui.theme.LocalVisualTheme
+import com.companion.cc.ui.theme.CompactGlassSurface
+import com.companion.cc.ui.theme.TagColorAdapter
 import java.util.UUID
 
 /**
@@ -43,13 +47,11 @@ fun TagSelectionDialog(
     var showCreateDialog by remember { mutableStateOf(false) }
 
     Dialog(onDismissRequest = onDismiss) {
-        Surface(
+        GlassDialogSurface(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(max = 500.dp),
-            shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 8.dp
+            shape = RoundedCornerShape(16.dp)
         ) {
             Column(
                 modifier = Modifier.padding(16.dp)
@@ -149,20 +151,18 @@ private fun TagSelectionItem(
     isSelected: Boolean,
     onToggle: () -> Unit
 ) {
-    Surface(
+    CompactGlassSurface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .clickable(onClick = onToggle),
-        color = if (isSelected) {
-            Color(android.graphics.Color.parseColor(tag.color)).copy(alpha = 0.2f)
+            .padding(vertical = 4.dp),
+        shape = RoundedCornerShape(8.dp),
+        onClick = onToggle,
+        fillOverride = if (isSelected) {
+            TagColorAdapter.parse(tag.color, LocalVisualTheme.current.tokens.accent).copy(alpha = 0.2f)
         } else {
             MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
         },
-        border = if (isSelected) {
-            BorderStroke(2.dp, Color(android.graphics.Color.parseColor(tag.color)))
-        } else null
+        borderOverride = if (isSelected) TagColorAdapter.parse(tag.color, LocalVisualTheme.current.tokens.accent) else null
     ) {
         Row(
             modifier = Modifier.padding(12.dp),
@@ -173,7 +173,7 @@ private fun TagSelectionItem(
                 modifier = Modifier
                     .size(16.dp)
                     .clip(CircleShape)
-                    .background(Color(android.graphics.Color.parseColor(tag.color)))
+                    .background(TagColorAdapter.parse(tag.color, LocalVisualTheme.current.tokens.accent))
             )
 
             Spacer(modifier = Modifier.width(12.dp))
@@ -188,7 +188,7 @@ private fun TagSelectionItem(
                 Icon(
                     imageVector = Icons.Default.Check,
                     contentDescription = "已选中",
-                    tint = Color(android.graphics.Color.parseColor(tag.color)),
+                    tint = TagColorAdapter.parse(tag.color, LocalVisualTheme.current.tokens.accent),
                     modifier = Modifier.size(20.dp)
                 )
             }
@@ -209,11 +209,9 @@ fun CreateTagDialog(
     var selectedColor by remember { mutableStateOf(tagColors[0]) }
 
     Dialog(onDismissRequest = onDismiss) {
-        Surface(
+        GlassDialogSurface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 8.dp
+            shape = RoundedCornerShape(16.dp)
         ) {
             Column(
                 modifier = Modifier.padding(16.dp)
@@ -295,11 +293,12 @@ private fun ColorCircle(
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
+    val parsedColor = TagColorAdapter.parse(color, LocalVisualTheme.current.tokens.accent)
     Box(
         modifier = Modifier
             .size(40.dp)
             .clip(CircleShape)
-            .background(Color(android.graphics.Color.parseColor(color)))
+            .background(parsedColor)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
@@ -307,7 +306,7 @@ private fun ColorCircle(
             Icon(
                 imageVector = Icons.Default.Check,
                 contentDescription = "已选中",
-                tint = Color.White,
+                tint = TagColorAdapter.contentColor(parsedColor),
                 modifier = Modifier.size(20.dp)
             )
         }
@@ -328,13 +327,11 @@ fun TagManagementDialog(
     var showCreateDialog by remember { mutableStateOf(false) }
 
     Dialog(onDismissRequest = onDismiss) {
-        Surface(
+        GlassDialogSurface(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(max = 500.dp),
-            shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 8.dp
+            shape = RoundedCornerShape(16.dp)
         ) {
             Column(
                 modifier = Modifier.padding(16.dp)
@@ -418,12 +415,12 @@ private fun TagManagementItem(
     tag: TagEntity,
     onDelete: () -> Unit
 ) {
-    Surface(
+    CompactGlassSurface(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp),
         shape = RoundedCornerShape(8.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        fillOverride = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
     ) {
         Row(
             modifier = Modifier.padding(12.dp),
@@ -433,7 +430,7 @@ private fun TagManagementItem(
                 modifier = Modifier
                     .size(16.dp)
                     .clip(CircleShape)
-                    .background(Color(android.graphics.Color.parseColor(tag.color)))
+                    .background(TagColorAdapter.parse(tag.color, LocalVisualTheme.current.tokens.accent))
             )
 
             Spacer(modifier = Modifier.width(12.dp))

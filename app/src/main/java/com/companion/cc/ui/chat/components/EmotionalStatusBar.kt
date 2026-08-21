@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.companion.cc.domain.model.EmotionalState
 import com.companion.cc.domain.model.Mood
+import com.companion.cc.ui.theme.CompactGlassSurface
 
 /**
  * 情感状态栏（紧凑显示）
@@ -24,11 +25,10 @@ fun EmotionalStatusBar(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+    CompactGlassSurface(
+        modifier = modifier.fillMaxWidth(),
+        fillOverride = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        onClick = onClick
     ) {
         Row(
             modifier = Modifier
@@ -123,9 +123,9 @@ private fun MiniStatusIndicator(
 fun VoiceListeningIndicator(
     modifier: Modifier = Modifier
 ) {
-    Surface(
+    CompactGlassSurface(
         modifier = modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.primaryContainer
+        fillOverride = MaterialTheme.colorScheme.primaryContainer
     ) {
         Row(
             modifier = Modifier.padding(12.dp),
@@ -155,9 +155,9 @@ fun TTSSpeakingIndicator(
     onStop: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Surface(
+    CompactGlassSurface(
         modifier = modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.secondaryContainer
+        fillOverride = MaterialTheme.colorScheme.secondaryContainer
     ) {
         Row(
             modifier = Modifier.padding(12.dp),

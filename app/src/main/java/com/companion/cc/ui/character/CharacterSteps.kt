@@ -203,7 +203,9 @@ fun ExamplesStep(viewModel: CharacterCustomizationViewModel) {
         AddExampleDialogueDialog(
             onDismiss = { showAddDialog = false },
             onConfirm = { user, assistant ->
-                viewModel.addExampleDialogue(user, assistant)
+                viewModel.addExampleDialogue(
+                    ExampleDialogue(user = user, assistant = assistant)
+                )
                 showAddDialog = false
             }
         )

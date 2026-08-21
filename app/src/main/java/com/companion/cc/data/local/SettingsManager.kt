@@ -22,14 +22,22 @@ class SettingsManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val encryptionHelper: EncryptionHelper
 ) {
+    private companion object {
+        const val ENCRYPTED_VALUE_PREFIX = "keystore:"
+    }
+
     private object Keys {
         val USER_ID = stringPreferencesKey("user_id")
         val API_KEY = stringPreferencesKey("api_key")
         val BASE_URL = stringPreferencesKey("base_url")
         val MODEL = stringPreferencesKey("model")
         val VISION_API_KEY = stringPreferencesKey("vision_api_key")  // 视觉模型专用 API Key
+        val VISION_SERVICE_MODE = stringPreferencesKey("vision_service_mode")
+        val SELF_HOSTED_DEVICE_TOKEN = stringPreferencesKey("self_hosted_device_token")
+        val INSTALLATION_ID = stringPreferencesKey("installation_id")
         val THEME_MODE = stringPreferencesKey("theme_mode")  // 主题模式: "system", "light", "dark"
         val FONT_SIZE = stringPreferencesKey("font_size")  // 字体大小: "small", "medium", "large", "xlarge"
+        val VISUAL_CUSTOMIZATION = stringPreferencesKey("visual_customization")
         val USER_AVATAR = stringPreferencesKey("user_avatar")  // 用户头像 URL
         val COMPANION_AVATAR_PREFIX = "companion_avatar_"  // AI 伴侣头像前缀
     }
@@ -83,12 +91,43 @@ class SettingsManager @Inject constructor(
         }
     }
 
+    val visionServiceModeFlow: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[Keys.VISION_SERVICE_MODE] ?: "GEMINI"
+    }
+
+    val selfHostedDeviceTokenFlow: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[Keys.SELF_HOSTED_DEVICE_TOKEN]
+            ?.takeIf { it.startsWith(ENCRYPTED_VALUE_PREFIX) }
+            ?.removePrefix(ENCRYPTED_VALUE_PREFIX)
+            ?.let(encryptionHelper::decrypt)
+    }
+
+    /**
+     * 在同一次 DataStore 事务内创建或读取安装标识，避免并发首次配对时拿到不同 ID。
+     */
+    suspend fun getOrCreateInstallationId(): String {
+        var installationId: String? = null
+        context.dataStore.edit { preferences ->
+            installationId = preferences[Keys.INSTALLATION_ID]
+            if (installationId == null) {
+                installationId = UUID.randomUUID().toString()
+                preferences[Keys.INSTALLATION_ID] = requireNotNull(installationId)
+            }
+        }
+        return requireNotNull(installationId)
+    }
+
     val themeModeFlow: Flow<String> = context.dataStore.data.map { preferences ->
         preferences[Keys.THEME_MODE] ?: "system"  // 默认跟随系统
     }
 
     val fontSizeFlow: Flow<String> = context.dataStore.data.map { preferences ->
         preferences[Keys.FONT_SIZE] ?: "medium"  // 默认中等
+    }
+
+    /** Serialized appearance settings owned by the visual customization manager. */
+    val visualCustomizationFlow: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[Keys.VISUAL_CUSTOMIZATION]
     }
 
     private fun generateUserId(): String {
@@ -143,6 +182,28 @@ class SettingsManager @Inject constructor(
         }
     }
 
+    suspend fun saveVisionServiceMode(mode: String) {
+        val normalized = if (mode == "SELF_HOSTED") "SELF_HOSTED" else "GEMINI"
+        context.dataStore.edit { preferences ->
+            preferences[Keys.VISION_SERVICE_MODE] = normalized
+        }
+    }
+
+    suspend fun saveSelfHostedDeviceToken(token: String) {
+        require(token.isNotBlank()) { "设备令牌不能为空" }
+        val encryptedToken = encryptionHelper.encrypt(token)
+            ?: throw SecurityException("无法安全保存设备令牌，请检查设备安全设置后重试")
+        context.dataStore.edit { preferences ->
+            preferences[Keys.SELF_HOSTED_DEVICE_TOKEN] = ENCRYPTED_VALUE_PREFIX + encryptedToken
+        }
+    }
+
+    suspend fun clearSelfHostedDeviceToken() {
+        context.dataStore.edit { preferences ->
+            preferences.remove(Keys.SELF_HOSTED_DEVICE_TOKEN)
+        }
+    }
+
     suspend fun saveThemeMode(mode: String) {
         context.dataStore.edit { preferences ->
             preferences[Keys.THEME_MODE] = mode
@@ -154,6 +215,12 @@ class SettingsManager @Inject constructor(
         context.dataStore.edit { preferences ->
             preferences[Keys.FONT_SIZE] = size
             Logger.d("SettingsManager", "字体大小已保存: $size")
+        }
+    }
+
+    suspend fun saveVisualCustomization(serializedCustomization: String) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.VISUAL_CUSTOMIZATION] = serializedCustomization
         }
     }
 

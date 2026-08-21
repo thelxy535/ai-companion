@@ -4,13 +4,21 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.companion.cc.domain.repository.MessageRepository
+import com.companion.cc.data.local.SettingsManager
+import com.companion.cc.data.local.dao.MemoryDao
+import com.companion.cc.data.local.dao.MemoryNodeDao
+import com.companion.cc.data.local.dao.VectorMemoryDao
+import com.companion.cc.domain.identity.CurrentUserProvider
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 import java.io.File
 import javax.inject.Inject
 
@@ -24,8 +32,14 @@ data class StorageInfo(
 @HiltViewModel
 class DataManagementViewModel @Inject constructor(
     private val messageRepository: MessageRepository,
+    private val settingsManager: SettingsManager,
+    private val memoryDao: MemoryDao,
+    private val memoryNodeDao: MemoryNodeDao,
+    private val vectorMemoryDao: VectorMemoryDao,
+    private val currentUserProvider: CurrentUserProvider,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
+    private var storageJob: Job? = null
 
     private val _isProcessing = MutableStateFlow(false)
     val isProcessing: StateFlow<Boolean> = _isProcessing.asStateFlow()
@@ -44,48 +58,35 @@ class DataManagementViewModel @Inject constructor(
      * 加载存储信息
      */
     fun loadStorageInfo() {
-        viewModelScope.launch {
-            try {
-                // 数据库大小
-                val dbFile = context.getDatabasePath("companion.db")
-                val dbSize = if (dbFile.exists()) {
-                    formatFileSize(dbFile.length())
-                } else {
-                    "0 B"
-                }
-
-                // 消息数量
-                val messageCount = messageRepository.getMessageCount("default")
-
-                // 记忆数量（暂时设为 0，需要 MemoryRepository）
-                val memoryCount = 0
-
-                // 缓存大小
-                val cacheDir = context.cacheDir
-                val cacheSize = formatFileSize(getFolderSize(cacheDir))
-
-                _storageInfo.value = StorageInfo(
-                    databaseSize = dbSize,
+        storageJob?.cancel()
+        storageJob = viewModelScope.launch {
+            val userId = currentUserProvider.requireUserId()
+            combine(
+                messageRepository.observeMessageCount(userId),
+                memoryDao.observeMemoryCount(userId),
+                memoryNodeDao.observeActiveCount(),
+                vectorMemoryDao.observeCount(userId)
+            ) { messageCount, legacyMemoryCount, nodeCount, vectorCount ->
+                val dbFile = context.getDatabasePath("cc_database")
+                StorageInfo(
+                    databaseSize = formatFileSize(databaseSizeBytes(dbFile)),
                     messageCount = messageCount.toString(),
-                    memoryCount = memoryCount.toString(),
-                    cacheSize = cacheSize
+                    memoryCount = (legacyMemoryCount + nodeCount + vectorCount).toString(),
+                    cacheSize = formatFileSize(getFolderSize(context.cacheDir))
                 )
-            } catch (e: Exception) {
-                android.util.Log.e("DataManagementVM", "加载存储信息失败", e)
-            }
+            }.collect { _storageInfo.value = it }
         }
     }
 
     /**
      * 清除所有对话记录
      */
-    fun clearAllMessages(userId: String) {
+    fun clearAllMessages() {
         viewModelScope.launch {
             _isProcessing.value = true
             try {
-                messageRepository.deleteAllMessages(userId)
+                messageRepository.deleteAllMessages(currentUserProvider.requireUserId())
                 _resultMessage.value = "所有对话记录已清除"
-                loadStorageInfo() // 刷新存储信息
             } catch (e: Exception) {
                 android.util.Log.e("DataManagementVM", "清除消息失败", e)
                 _resultMessage.value = "清除失败: ${e.message}"
@@ -98,10 +99,11 @@ class DataManagementViewModel @Inject constructor(
     /**
      * 导出数据
      */
-    fun exportData(userId: String, companionId: String) {
+    fun exportData(companionId: String) {
         viewModelScope.launch {
             _isProcessing.value = true
             try {
+                val userId = currentUserProvider.requireUserId()
                 // 获取所有消息
                 val messages = messageRepository.getMessages(
                     userId = userId,
@@ -191,7 +193,6 @@ class DataManagementViewModel @Inject constructor(
                 messageRepository.saveMessages(messages)
 
                 _resultMessage.value = "成功导入 ${messages.size} 条消息"
-                loadStorageInfo() // 刷新存储信息
             } catch (e: Exception) {
                 android.util.Log.e("DataManagementVM", "导入失败", e)
                 _resultMessage.value = "导入失败: ${e.message}"
@@ -232,6 +233,12 @@ class DataManagementViewModel @Inject constructor(
             else -> "${size / (1024 * 1024 * 1024)} GB"
         }
     }
+
+    private fun databaseSizeBytes(databaseFile: File): Long = listOf(
+        databaseFile,
+        File(databaseFile.path + "-wal"),
+        File(databaseFile.path + "-shm")
+    ).filter(File::exists).sumOf(File::length)
 
     private fun getFolderSize(folder: File): Long {
         var size = 0L

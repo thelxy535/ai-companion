@@ -49,6 +49,12 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideMemoryNodeDao(database: AppDatabase): com.companion.cc.data.local.dao.MemoryNodeDao {
+        return database.memoryNodeDao()
+    }
+
+    @Provides
+    @Singleton
     fun provideUserProfileDao(database: AppDatabase): com.companion.cc.data.local.dao.UserProfileDao {
         return database.userProfileDao()
     }

@@ -15,6 +15,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import com.companion.cc.ui.theme.LocalVisualTheme
 
 /**
  * 简单的 Markdown 渲染器
@@ -28,6 +29,7 @@ fun MarkdownText(
 ) {
     val surfaceVariant = MaterialTheme.colorScheme.surfaceVariant
     val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
+    val visualTheme = LocalVisualTheme.current
 
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         parseMarkdown(text).forEach { block ->
@@ -51,7 +53,12 @@ fun MarkdownText(
                             .padding(12.dp)
                     ) {
                         Text(
-                            text = highlightCode(block.content, block.language),
+                            text = highlightCode(
+                                code = block.content,
+                                language = block.language,
+                                keywordColor = visualTheme.tokens.chart.trend,
+                                stringColor = visualTheme.tokens.status.success
+                            ),
                             style = MaterialTheme.typography.bodyMedium.copy(
                                 fontFamily = FontFamily.Monospace
                             ),
@@ -70,7 +77,9 @@ fun MarkdownText(
  */
 private fun highlightCode(
     code: String,
-    language: String
+    language: String,
+    keywordColor: androidx.compose.ui.graphics.Color,
+    stringColor: androidx.compose.ui.graphics.Color
 ): androidx.compose.ui.text.AnnotatedString {
     return buildAnnotatedString {
         val keywords = when (language.lowercase()) {
@@ -99,7 +108,7 @@ private fun highlightCode(
             words.forEach { word ->
                 if (word in keywords) {
                     withStyle(SpanStyle(
-                        color = androidx.compose.ui.graphics.Color(0xFF0077AA),
+                        color = keywordColor,
                         fontWeight = FontWeight.Bold
                     )) {
                         append(word)
@@ -108,7 +117,7 @@ private fun highlightCode(
                     // 字符串高亮
                     if (word.startsWith("\"") && word.endsWith("\"")) {
                         withStyle(SpanStyle(
-                            color = androidx.compose.ui.graphics.Color(0xFF00AA00)
+                            color = stringColor
                         )) {
                             append(word)
                         }

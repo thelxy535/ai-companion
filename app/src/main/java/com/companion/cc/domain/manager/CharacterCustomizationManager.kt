@@ -62,15 +62,16 @@ class CharacterCustomizationManager @Inject constructor(
     /**
      * 更新角色
      */
-    suspend fun updateCharacter(character: CustomCharacter) {
+    suspend fun updateCharacter(character: CustomCharacter): CustomCharacter {
         characterRepository.updateCharacter(character)
         registerCharacterToPersonalityManager(character)
+        return character
     }
 
     /**
      * 删除角色
      */
-    suspend fun deleteCharacter(characterId: String) {
+    suspend fun deleteCharacter(userId: String, characterId: String) {
         characterRepository.deleteCharacter(characterId)
         personalityManager.removeCompanion(characterId)
     }
@@ -78,8 +79,8 @@ class CharacterCustomizationManager @Inject constructor(
     /**
      * 获取角色
      */
-    suspend fun getCharacter(characterId: String): CustomCharacter? {
-        return characterRepository.getCharacterById(characterId)
+    suspend fun getCharacter(userId: String, characterId: String): CustomCharacter? {
+        return characterRepository.getCharacterById(characterId)?.takeIf { it.userId == userId }
     }
 
     /**

@@ -1,34 +1,32 @@
 package com.companion.cc.ui.settings
 
-import androidx.compose.animation.*
-import androidx.compose.foundation.*
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.companion.cc.domain.model.AIProvider
-import com.companion.cc.ui.theme.FunctionalColors
+import com.companion.cc.domain.model.BackdropTarget
+import com.companion.cc.ui.components.UtilityDivider
+import com.companion.cc.ui.components.UtilitySection
+import com.companion.cc.ui.theme.GlassSurface
 
-/**
- * Settings 界面 - 完全按照设计文档重构
- * 参考: Now in Android, Material 3, VS Code
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     onNavigateBack: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
-    // 状态收集
     val apiKey by viewModel.apiKey.collectAsState()
     val baseUrl by viewModel.baseUrl.collectAsState()
     val model by viewModel.model.collectAsState()
@@ -37,69 +35,53 @@ fun SettingsScreen(
     val isValidating by viewModel.isValidating.collectAsState()
     val validationMessage by viewModel.validationMessage.collectAsState()
     val visionApiKeySaved by viewModel.visionApiKeySaved.collectAsState()
+    val visionServiceMode by viewModel.visionServiceMode.collectAsState()
+    val isSelfHostedVisionPaired by viewModel.isSelfHostedVisionPaired.collectAsState()
+    val isPairingSelfHostedVision by viewModel.isPairingSelfHostedVision.collectAsState()
+    val selfHostedVisionMessage by viewModel.selfHostedVisionMessage.collectAsState()
     val themeMode by viewModel.themeMode.collectAsState()
     val fontSize by viewModel.fontSize.collectAsState()
+    val visualCustomization by viewModel.visualCustomization.collectAsState()
+    val visualCustomizationMessage by viewModel.visualCustomizationMessage.collectAsState()
     val userAvatar by viewModel.userAvatar.collectAsState()
     val xiaoChanAvatar by viewModel.xiaoChanAvatar.collectAsState()
     val museAvatar by viewModel.museAvatar.collectAsState()
 
-    var apiKeyInput by remember { mutableStateOf(apiKey ?: "") }
+    var apiKeyInput by remember { mutableStateOf(apiKey.orEmpty()) }
     var baseUrlInput by remember { mutableStateOf(baseUrl) }
-    var visionApiKeyInput by remember { mutableStateOf("") }  // 视觉 API Key 输入
-    var showUserAvatarDialog by remember { mutableStateOf(false) }
-    var showXiaoChanAvatarDialog by remember { mutableStateOf(false) }
-    var showMuseAvatarDialog by remember { mutableStateOf(false) }
+    var visionApiKeyInput by remember { mutableStateOf("") }
+    var selfHostedPairingCode by remember { mutableStateOf("") }
+    var backdropPickerTarget by remember { mutableStateOf<BackdropTarget?>(null) }
+    var avatarDialog by remember { mutableStateOf<AvatarTarget?>(null) }
 
-    // 同步状态
-    LaunchedEffect(apiKey) {
-        apiKeyInput = apiKey ?: ""
+    LaunchedEffect(apiKey) { apiKeyInput = apiKey.orEmpty() }
+    LaunchedEffect(baseUrl) { baseUrlInput = baseUrl }
+
+    val backdropPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        val target = backdropPickerTarget
+        if (uri != null && target != null) viewModel.selectVisualBackdrop(target, uri)
+        backdropPickerTarget = null
     }
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = "设置",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowBack,
-                            contentDescription = "返回"
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface
-                )
-            )
-        },
-        containerColor = MaterialTheme.colorScheme.background
+        topBar = { SettingsTopBar(onNavigateBack) },
+        containerColor = Color.Transparent
     ) { padding ->
         LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding),
+            modifier = Modifier.fillMaxSize().padding(padding),
             contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // 1. 状态卡片
             item {
-                ProviderStatusCard(
+                ProviderStatusSection(
                     provider = currentProvider,
                     modelCount = availableModels.size,
                     selectedModel = model,
-                    isConnected = currentProvider != null,
-                    onTestConnection = { viewModel.testConnection() }
+                    onTestConnection = viewModel::testConnection
                 )
             }
-
-            // 2. API 配置区
             item {
                 ApiConfigSection(
                     apiKey = apiKeyInput,
@@ -107,536 +89,98 @@ fun SettingsScreen(
                     isValidating = isValidating,
                     validationMessage = validationMessage,
                     currentProvider = currentProvider,
-                    modelCount = availableModels.size,
-                    onValidate = {
-                        viewModel.validateAndConfigureApiKey(apiKeyInput, null)
-                    }
+                    onValidate = { viewModel.validateAndConfigureApiKey(apiKeyInput, null) }
                 )
             }
-
-            // 2.5. 视觉 API 配置区（图片理解专用）
-            item {
-                VisionApiConfigSection(
-                    visionApiKey = visionApiKeyInput,
-                    onVisionApiKeyChange = { visionApiKeyInput = it },
-                    onSave = {
-                        viewModel.saveVisionApiKey(visionApiKeyInput)
-                    },
-                    isSaved = visionApiKeySaved
-                )
-            }
-
-            // 3. 模型选择区
             if (availableModels.isNotEmpty()) {
                 item {
                     ModelSelectionSection(
-                        selectedModel = model ?: availableModels.firstOrNull() ?: "",
+                        selectedModel = model,
                         availableModels = availableModels,
                         providerName = currentProvider?.displayName,
-                        onModelChange = { viewModel.switchModel(it) }
+                        onModelChange = viewModel::switchModel
                     )
                 }
             }
-
-            // 3.5. 主题设置
+            item { SupportedProvidersSection() }
             item {
-                ThemeSettingsSection(
-                    currentTheme = themeMode,
-                    onThemeChange = { viewModel.saveThemeMode(it) }
+                VisionApiConfigSection(
+                    mode = visionServiceMode,
+                    isSelfHostedPaired = isSelfHostedVisionPaired,
+                    pairingCode = selfHostedPairingCode,
+                    onPairingCodeChange = { selfHostedPairingCode = it },
+                    isPairing = isPairingSelfHostedVision,
+                    message = selfHostedVisionMessage,
+                    onModeChange = viewModel::selectVisionService,
+                    onPair = { viewModel.pairSelfHostedVision(selfHostedPairingCode) },
+                    onUnpair = viewModel::unpairSelfHostedVision,
+                    visionApiKey = visionApiKeyInput,
+                    onVisionApiKeyChange = { visionApiKeyInput = it },
+                    onSaveGemini = { viewModel.saveVisionApiKey(visionApiKeyInput) },
+                    isGeminiKeySaved = visionApiKeySaved
                 )
             }
-
-            // 3.6. 字体大小设置
+            item { ThemeSettingsSection(themeMode, viewModel::saveThemeMode) }
             item {
-                FontSizeSettingsSection(
-                    currentSize = fontSize,
-                    onSizeChange = { viewModel.saveFontSize(it) }
-                )
-            }
-
-            // 3.7. 头像设置
-            item {
-                Text(
-                    text = "头像设置",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(vertical = 8.dp)
-                )
-            }
-
-            item {
-                AvatarSettingItem(
-                    title = "我的头像",
-                    avatarUrl = userAvatar,
-                    onClick = { showUserAvatarDialog = true }
-                )
-            }
-
-            item {
-                AvatarSettingItem(
-                    title = "小璨的头像",
-                    avatarUrl = xiaoChanAvatar,
-                    defaultEmoji = "💕",
-                    onClick = { showXiaoChanAvatarDialog = true }
-                )
-            }
-
-            item {
-                AvatarSettingItem(
-                    title = "缪斯的头像",
-                    avatarUrl = museAvatar,
-                    defaultEmoji = "🎭",
-                    onClick = { showMuseAvatarDialog = true }
-                )
-            }
-
-            // 4. 高级设置
-            item {
-                AdvancedSettingsSection(
-                    baseUrl = baseUrlInput,
-                    onBaseUrlChange = { baseUrlInput = it }
-                )
-            }
-
-            // 5. 支持的供应商
-            item {
-                SupportedProvidersCard()
-            }
-
-            // 底部间距
-            item {
-                Spacer(modifier = Modifier.height(16.dp))
-            }
-        }
-
-        // 头像设置对话框
-        if (showUserAvatarDialog) {
-            AvatarSettingsDialog(
-                currentAvatarUrl = userAvatar,
-                title = "设置我的头像",
-                onDismiss = { showUserAvatarDialog = false },
-                onAvatarSelected = { uri ->
-                    viewModel.saveUserAvatar(uri.toString())
-                    showUserAvatarDialog = false
-                },
-                onClearAvatar = {
-                    viewModel.saveUserAvatar(null)
-                }
-            )
-        }
-
-        if (showXiaoChanAvatarDialog) {
-            AvatarSettingsDialog(
-                currentAvatarUrl = xiaoChanAvatar,
-                title = "设置小璨的头像",
-                onDismiss = { showXiaoChanAvatarDialog = false },
-                onAvatarSelected = { uri ->
-                    viewModel.saveCompanionAvatar("xiaocan", uri.toString())
-                    showXiaoChanAvatarDialog = false
-                },
-                onClearAvatar = {
-                    viewModel.saveCompanionAvatar("xiaocan", null)
-                }
-            )
-        }
-
-        if (showMuseAvatarDialog) {
-            AvatarSettingsDialog(
-                currentAvatarUrl = museAvatar,
-                title = "设置缪斯的头像",
-                onDismiss = { showMuseAvatarDialog = false },
-                onAvatarSelected = { uri ->
-                    viewModel.saveCompanionAvatar("muse", uri.toString())
-                    showMuseAvatarDialog = false
-                },
-                onClearAvatar = {
-                    viewModel.saveCompanionAvatar("muse", null)
-                }
-            )
-        }
-    }
-}
-
-// ==================== 组件实现 ====================
-
-@Composable
-private fun ProviderStatusCard(
-    provider: AIProvider?,
-    modelCount: Int,
-    selectedModel: String?,
-    isConnected: Boolean,
-    onTestConnection: () -> Unit
-) {
-    ElevatedCard(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
-    ) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            // 状态指示
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Icon(
-                    imageVector = if (isConnected)
-                        Icons.Default.CheckCircle
-                    else
-                        Icons.Default.Info,
-                    contentDescription = null,
-                    tint = if (isConnected)
-                        FunctionalColors.success
-                    else
-                        MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(24.dp)
-                )
-                Text(
-                    text = if (isConnected) "已连接" else "未配置",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = if (isConnected)
-                        FunctionalColors.success
-                    else
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            if (provider != null) {
-                Divider(modifier = Modifier.padding(vertical = 8.dp))
-
-                // 供应商信息
-                InfoRow("供应商", provider.displayName)
-                if (selectedModel != null) {
-                    InfoRow("当前模型", selectedModel)
-                }
-                InfoRow("可用模型", "$modelCount 个")
-
-                // 测试按钮
-                OutlinedButton(
-                    onClick = onTestConnection,
-                    modifier = Modifier
-                        .align(Alignment.End)
-                        .height(36.dp)
-                ) {
-                    Text("测试连接", style = MaterialTheme.typography.labelMedium)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun InfoRow(label: String, value: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium
-        )
-    }
-}
-
-/**
- * 主题设置区
- */
-@Composable
-private fun ThemeSettingsSection(
-    currentTheme: String,
-    onThemeChange: (String) -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        )
-    ) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // 标题
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Palette,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
-                )
-                Text(
-                    text = "外观设置",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-
-            // 主题选项
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                ThemeOption(
-                    icon = Icons.Default.Brightness4,
-                    label = "跟随系统",
-                    description = "根据系统设置自动切换",
-                    isSelected = currentTheme == "system",
-                    onClick = { onThemeChange("system") }
-                )
-                ThemeOption(
-                    icon = Icons.Default.LightMode,
-                    label = "明亮模式",
-                    description = "始终使用明亮主题",
-                    isSelected = currentTheme == "light",
-                    onClick = { onThemeChange("light") }
-                )
-                ThemeOption(
-                    icon = Icons.Default.DarkMode,
-                    label = "暗黑模式",
-                    description = "始终使用暗黑主题",
-                    isSelected = currentTheme == "dark",
-                    onClick = { onThemeChange("dark") }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ThemeOption(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    description: String,
-    isSelected: Boolean,
-    onClick: () -> Unit
-) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(12.dp),
-        color = if (isSelected)
-            MaterialTheme.colorScheme.primaryContainer
-        else
-            MaterialTheme.colorScheme.surface,
-        border = if (isSelected)
-            BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
-        else
-            null,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = if (isSelected)
-                    MaterialTheme.colorScheme.primary
-                else
-                    MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                    color = if (isSelected)
-                        MaterialTheme.colorScheme.onPrimaryContainer
-                    else
-                        MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = description,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (isSelected)
-                        MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                    else
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            if (isSelected) {
-                Icon(
-                    imageVector = Icons.Default.CheckCircle,
-                    contentDescription = "已选择",
-                    tint = MaterialTheme.colorScheme.primary
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ApiConfigSection(
-    apiKey: String,
-    onApiKeyChange: (String) -> Unit,
-    isValidating: Boolean,
-    validationMessage: String?,
-    currentProvider: AIProvider?,
-    modelCount: Int,
-    onValidate: () -> Unit
-) {
-    ElevatedCard(
-        modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // 标题
-            Text(
-                text = "API 配置",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-
-            // API Key 输入
-            OutlinedTextField(
-                value = apiKey,
-                onValueChange = onApiKeyChange,
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("API Key") },
-                placeholder = { Text("sk-xxxxxxxxxxxxxx") },
-                leadingIcon = {
-                    Icon(Icons.Default.Key, contentDescription = null)
-                },
-                singleLine = true,
-                shape = MaterialTheme.shapes.small
-            )
-
-            // 帮助文字
-            Text(
-                text = "粘贴 API 密钥后会自动识别供应商",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            // 验证按钮
-            Button(
-                onClick = onValidate,
-                modifier = Modifier.fillMaxWidth(),
-                enabled = apiKey.isNotBlank() && !isValidating
-            ) {
-                if (isValidating) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimary
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("验证中...")
-                } else {
-                    Text("验证并保存")
-                }
-            }
-
-            // 验证结果
-            if (validationMessage != null) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Icon(
-                        imageVector = if (currentProvider != null)
-                            Icons.Default.CheckCircle
-                        else
-                            Icons.Default.Error,
-                        contentDescription = null,
-                        tint = if (currentProvider != null)
-                            FunctionalColors.success
-                        else
-                            MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Text(
-                        text = validationMessage,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (currentProvider != null)
-                            FunctionalColors.success
-                        else
-                            MaterialTheme.colorScheme.error
-                    )
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ModelSelectionSection(
-    selectedModel: String,
-    availableModels: List<String>,
-    providerName: String?,
-    onModelChange: (String) -> Unit
-) {
-    ElevatedCard(
-        modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Text(
-                text = "模型选择",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-
-            var expanded by remember { mutableStateOf(false) }
-
-            ExposedDropdownMenuBox(
-                expanded = expanded,
-                onExpandedChange = { expanded = !expanded }
-            ) {
-                OutlinedTextField(
-                    value = selectedModel,
-                    onValueChange = {},
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .menuAnchor(),
-                    label = { Text("当前模型") },
-                    readOnly = true,
-                    trailingIcon = {
-                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
+                VisualCustomizationEditor(
+                    customization = visualCustomization,
+                    message = visualCustomizationMessage,
+                    onPickBackdrop = { target ->
+                        backdropPickerTarget = target
+                        backdropPickerLauncher.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
                     },
-                    shape = MaterialTheme.shapes.small
+                    onClearBackdrop = viewModel::clearVisualBackdrop,
+                    onSaveAccent = viewModel::saveVisualAccent,
+                    onSaveEffectsPreference = viewModel::saveVisualEffectsPreference,
+                    onSaveGlassOpacity = viewModel::saveGlassOpacity,
+                    onReset = viewModel::resetVisualCustomization,
+                    onSaveBackdropAppearance = viewModel::saveBackdropAppearance
                 )
-
-                ExposedDropdownMenu(
-                    expanded = expanded,
-                    onDismissRequest = { expanded = false }
-                ) {
-                    availableModels.forEach { model ->
-                        DropdownMenuItem(
-                            text = { Text(model) },
-                            onClick = {
-                                onModelChange(model)
-                                expanded = false
-                            }
-                        )
-                    }
+            }
+            item { FontSizeSettingsSection(fontSize, viewModel::saveFontSize) }
+            item {
+                UtilitySection(title = "身份与头像", icon = Icons.Default.AccountCircle) {
+                    AvatarSettingItem("我的头像", userAvatar, onClick = { avatarDialog = AvatarTarget.USER })
+                    UtilityDivider()
+                    AvatarSettingItem("小璨的头像", xiaoChanAvatar, "💕") { avatarDialog = AvatarTarget.XIAO_CHAN }
+                    UtilityDivider()
+                    AvatarSettingItem("缪斯的头像", museAvatar, "🎭") { avatarDialog = AvatarTarget.MUSE }
                 }
             }
+            item { AdvancedSettingsSection(baseUrlInput) { baseUrlInput = it } }
+            item { Spacer(Modifier.height(16.dp)) }
+        }
 
-            Text(
-                text = "共 ${availableModels.size} 个 ${providerName ?: ""} 模型可用",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+        avatarDialog?.let { target ->
+            AvatarSettingsDialog(
+                currentAvatarUrl = when (target) {
+                    AvatarTarget.USER -> userAvatar
+                    AvatarTarget.XIAO_CHAN -> xiaoChanAvatar
+                    AvatarTarget.MUSE -> museAvatar
+                },
+                title = when (target) {
+                    AvatarTarget.USER -> "设置我的头像"
+                    AvatarTarget.XIAO_CHAN -> "设置小璨的头像"
+                    AvatarTarget.MUSE -> "设置缪斯的头像"
+                },
+                onDismiss = { avatarDialog = null },
+                onAvatarSelected = { uri ->
+                    when (target) {
+                        AvatarTarget.USER -> viewModel.saveUserAvatar(uri?.toString())
+                        AvatarTarget.XIAO_CHAN -> viewModel.saveCompanionAvatar("xiaocan", uri?.toString())
+                        AvatarTarget.MUSE -> viewModel.saveCompanionAvatar("muse", uri?.toString())
+                    }
+                    avatarDialog = null
+                },
+                onClearAvatar = {
+                    when (target) {
+                        AvatarTarget.USER -> viewModel.saveUserAvatar(null)
+                        AvatarTarget.XIAO_CHAN -> viewModel.saveCompanionAvatar("xiaocan", null)
+                        AvatarTarget.MUSE -> viewModel.saveCompanionAvatar("muse", null)
+                    }
+                }
             )
         }
     }
@@ -644,372 +188,23 @@ private fun ModelSelectionSection(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AdvancedSettingsSection(
-    baseUrl: String,
-    onBaseUrlChange: (String) -> Unit
-) {
-    var isExpanded by remember { mutableStateOf(false) }
-
-    OutlinedCard(
+private fun SettingsTopBar(onNavigateBack: () -> Unit) {
+    GlassSurface(
         modifier = Modifier.fillMaxWidth(),
-        onClick = { isExpanded = !isExpanded }
+        shape = RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp),
+        contentPadding = PaddingValues(0.dp),
+        useStrongFill = true
     ) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            // 标题行
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "高级设置",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Icon(
-                    imageVector = if (isExpanded)
-                        Icons.Default.ExpandLess
-                    else
-                        Icons.Default.ExpandMore,
-                    contentDescription = if (isExpanded) "收起" else "展开"
-                )
-            }
-
-            // 可折叠内容
-            AnimatedVisibility(visible = isExpanded) {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Divider()
-
-                    OutlinedTextField(
-                        value = baseUrl,
-                        onValueChange = onBaseUrlChange,
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Base URL") },
-                        placeholder = { Text("https://api.example.com/v1") },
-                        singleLine = true,
-                        shape = MaterialTheme.shapes.small
-                    )
-
-                    Text(
-                        text = "仅在使用自定义 API 端点时修改",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+        TopAppBar(
+            title = { Text("设置", fontWeight = FontWeight.Bold) },
+            navigationIcon = {
+                IconButton(onClick = onNavigateBack) {
+                    Icon(Icons.Default.ArrowBack, contentDescription = "返回")
                 }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SupportedProvidersCard() {
-    ElevatedCard(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
+            },
+            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
         )
-    ) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(
-                text = "支持的 AI 供应商",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(
-                    "SiliconFlow",
-                    "OpenAI",
-                    "智谱 AI (Zhipu)",
-                    "DeepSeek",
-                    "月之暗面 (Kimi)",
-                    "阿里云百炼",
-                    "自定义"
-                ).forEach { provider ->
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.CheckCircle,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = provider,
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
-                }
-            }
-
-            Divider(modifier = Modifier.padding(vertical = 8.dp))
-
-            Text(
-                text = "系统会自动识别您的 API 密钥类型",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
     }
 }
 
-/**
- * 视觉 API 配置区（图片理解专用）
- */
-@Composable
-private fun VisionApiConfigSection(
-    visionApiKey: String,
-    onVisionApiKeyChange: (String) -> Unit,
-    onSave: () -> Unit,
-    isSaved: Boolean = false
-) {
-    ElevatedCard(
-        modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // 标题
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Image,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(24.dp)
-                )
-                Text(
-                    text = "图片理解配置",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            // 说明文字
-            Text(
-                text = "配置 Gemini API Key 以启用图片理解功能（免费额度 1500次/天）",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            // Gemini API Key 输入
-            OutlinedTextField(
-                value = visionApiKey,
-                onValueChange = onVisionApiKeyChange,
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Gemini API Key") },
-                placeholder = { Text("粘贴您的 Gemini API Key") },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.Key,
-                        contentDescription = null
-                    )
-                },
-                singleLine = true,
-                shape = MaterialTheme.shapes.small
-            )
-
-            // 获取 API Key 引导
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Info,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(20.dp)
-                )
-                Text(
-                    text = "访问 aistudio.google.com 免费获取 API Key",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary
-                )
-            }
-
-            // 保存成功提示
-            AnimatedVisibility(
-                visible = isSaved,
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut() + shrinkVertically()
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            color = FunctionalColors.success.copy(alpha = 0.1f),
-                            shape = MaterialTheme.shapes.small
-                        )
-                        .padding(12.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.CheckCircle,
-                        contentDescription = null,
-                        tint = FunctionalColors.success,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Text(
-                        text = "视觉 API Key 保存成功",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = FunctionalColors.success
-                    )
-                }
-            }
-
-            // 保存按钮
-            Button(
-                onClick = onSave,
-                modifier = Modifier.fillMaxWidth(),
-                enabled = visionApiKey.isNotBlank()
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Check,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("保存视觉 API Key")
-            }
-        }
-    }
-}
-
-/**
- * 字体大小设置区
- */
-@Composable
-private fun FontSizeSettingsSection(
-    currentSize: String,
-    onSizeChange: (String) -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        )
-    ) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // 标题
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.TextFields,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
-                )
-                Text(
-                    text = "字体大小",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-
-            // 字体大小选项
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                FontSizeOption(
-                    label = "小",
-                    description = "紧凑显示，适合小屏幕",
-                    isSelected = currentSize == "small",
-                    onClick = { onSizeChange("small") }
-                )
-                FontSizeOption(
-                    label = "中（推荐）",
-                    description = "默认大小，平衡舒适",
-                    isSelected = currentSize == "medium",
-                    onClick = { onSizeChange("medium") }
-                )
-                FontSizeOption(
-                    label = "大",
-                    description = "易于阅读",
-                    isSelected = currentSize == "large",
-                    onClick = { onSizeChange("large") }
-                )
-                FontSizeOption(
-                    label = "超大",
-                    description = "最大字体，视力辅助",
-                    isSelected = currentSize == "xlarge",
-                    onClick = { onSizeChange("xlarge") }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun FontSizeOption(
-    label: String,
-    description: String,
-    isSelected: Boolean,
-    onClick: () -> Unit
-) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(12.dp),
-        color = if (isSelected)
-            MaterialTheme.colorScheme.primaryContainer
-        else
-            MaterialTheme.colorScheme.surface,
-        border = if (isSelected)
-            BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
-        else
-            null,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                    color = if (isSelected)
-                        MaterialTheme.colorScheme.onPrimaryContainer
-                    else
-                        MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = description,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (isSelected)
-                        MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                    else
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            if (isSelected) {
-                Icon(
-                    imageVector = Icons.Default.CheckCircle,
-                    contentDescription = "已选择",
-                    tint = MaterialTheme.colorScheme.primary
-                )
-            }
-        }
-    }
-}
+private enum class AvatarTarget { USER, XIAO_CHAN, MUSE }

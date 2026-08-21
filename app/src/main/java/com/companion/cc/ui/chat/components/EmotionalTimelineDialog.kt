@@ -24,6 +24,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.companion.cc.domain.model.Mood
+import com.companion.cc.ui.theme.GlassDialogSurface
+import com.companion.cc.ui.theme.LocalVisualTheme
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -36,11 +38,10 @@ fun EmotionalTimelineDialog(
     timelineData: List<EmotionalTimelinePoint>,
     onDismiss: () -> Unit
 ) {
+    val chart = LocalVisualTheme.current.tokens.chart
     Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            shape = RoundedCornerShape(24.dp),
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 6.dp
+        GlassDialogSurface(
+            shape = RoundedCornerShape(24.dp)
         ) {
             Column(
                 modifier = Modifier
@@ -91,7 +92,7 @@ fun EmotionalTimelineDialog(
                             icon = Icons.Default.Favorite,
                             data = timelineData,
                             valueExtractor = { it.affection },
-                            color = MaterialTheme.colorScheme.error
+                            color = chart.affection
                         )
 
                         Divider()
@@ -102,7 +103,7 @@ fun EmotionalTimelineDialog(
                             icon = Icons.Default.Security,
                             data = timelineData,
                             valueExtractor = { it.trust },
-                            color = MaterialTheme.colorScheme.tertiary
+                            color = chart.trust
                         )
 
                         Divider()
@@ -113,7 +114,7 @@ fun EmotionalTimelineDialog(
                             icon = Icons.Default.Star,
                             data = timelineData,
                             valueExtractor = { it.interest },
-                            color = Color(0xFFFFA726)
+                            color = chart.interest
                         )
 
                         Divider()

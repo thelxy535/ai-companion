@@ -11,12 +11,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.companion.cc.domain.model.Message
 import com.companion.cc.domain.model.MessageRole
 import com.companion.cc.ui.chat.ChatViewModel
+import com.companion.cc.ui.theme.CompactGlassSurface
+import com.companion.cc.ui.theme.GlassSurface
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -35,7 +38,12 @@ fun FavoritesScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            GlassSurface(
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(0.dp),
+                useStrongFill = true
+            ) {
+                TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
@@ -54,10 +62,12 @@ fun FavoritesScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                    containerColor = Color.Transparent
                 )
             )
-        }
+            }
+        },
+        containerColor = Color.Transparent
     ) { paddingValues ->
         if (favoriteMessages.isEmpty()) {
             // 空状态
@@ -99,7 +109,7 @@ fun FavoritesScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(favoriteMessages) { message ->
-                    FavoriteMessageCard(
+                    FavoriteMessageRow(
                         message = message,
                         onUnfavorite = {
                             viewModel.toggleFavorite(message.id, false)
@@ -112,24 +122,17 @@ fun FavoritesScreen(
 }
 
 /**
- * 收藏消息卡片
+ * 收藏消息行
  */
 @Composable
-private fun FavoriteMessageCard(
+private fun FavoriteMessageRow(
     message: Message,
     onUnfavorite: () -> Unit
 ) {
     val dateFormat = remember { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()) }
-
-    Surface(
+    CompactGlassSurface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        color = if (message.role == MessageRole.ASSISTANT) {
-            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-        } else {
-            MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
-        },
-        tonalElevation = 2.dp
+        shape = RoundedCornerShape(8.dp)
     ) {
         Column(
             modifier = Modifier.padding(16.dp)

@@ -10,6 +10,9 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface MemoryNodeDao {
+    @Query("SELECT COUNT(*) FROM memory_nodes WHERE status = 'active'")
+    fun observeActiveCount(): Flow<Int>
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(node: MemoryNodeEntity)
 

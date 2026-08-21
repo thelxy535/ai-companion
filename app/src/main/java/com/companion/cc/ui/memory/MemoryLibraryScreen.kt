@@ -17,6 +17,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Divider
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -30,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.companion.cc.data.local.entity.MemoryNodeEntity
 import com.companion.cc.ui.theme.GlassSurface
+import com.companion.cc.ui.theme.CompactGlassSurface
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -59,7 +63,7 @@ fun MemoryLibraryScreen(
                 leadingIcon = { Icon(Icons.Default.Search, "搜索") },
                 singleLine = true
             )
-            LazyColumn(contentPadding = PaddingValues(vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            LazyColumn(contentPadding = PaddingValues(vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
                 items(nodes, key = { it.id }) { node -> MemoryNodeRow(node, onClick = { onOpenDetail(node.id) }) }
             }
         }
@@ -68,14 +72,18 @@ fun MemoryLibraryScreen(
 
 @Composable
 private fun MemoryNodeRow(node: MemoryNodeEntity, onClick: () -> Unit) {
-    GlassSurface(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick), contentPadding = PaddingValues(14.dp)) {
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    CompactGlassSurface(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onClick
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(node.title, fontWeight = FontWeight.SemiBold)
             Text(node.content)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(node.kind)
                 Text("可信度 ${(node.confidence * 100).toInt()}%")
             }
+            Divider(color = MaterialTheme.colorScheme.outlineVariant)
         }
     }
 }

@@ -13,10 +13,15 @@ android {
         applicationId = "com.companion.cc"
         minSdk = 26
         targetSdk = 34
-        versionCode = 10  // 识别修复最终版
-        versionName = "2.1.0-beta.9"  // 新版本：识别逻辑完全修复
+        versionCode = 11
+        versionName = "2.1.0-beta.10"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField(
+            "String",
+            "SELF_HOSTED_VISION_BASE_URL",
+            "\"https://154-217-251-47.sslip.io\""
+        )
 
         vectorDrawables {
             useSupportLibrary = true

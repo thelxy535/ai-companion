@@ -7,6 +7,7 @@ import com.companion.cc.data.local.SettingsManager
 import com.companion.cc.domain.model.VisionAnalysis
 import com.companion.cc.domain.model.VisionError
 import com.companion.cc.domain.vision.VisionProvider
+import com.companion.cc.domain.vision.VisionResponseParser
 import com.companion.cc.util.Logger
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
@@ -48,7 +49,6 @@ class GeminiVisionProvider @Inject constructor(
 
     override suspend fun isAvailable(): Boolean {
         val apiKey = settingsManager.visionApiKeyFlow.first()
-        Logger.d("GeminiVisionProvider", "检查可用性 - API Key: ${if (apiKey.isNullOrBlank()) "未配置" else "已配置(${apiKey.length}字符)"}")
         return !apiKey.isNullOrBlank()
     }
 
@@ -109,7 +109,7 @@ class GeminiVisionProvider @Inject constructor(
 
             if (!response.isSuccessful) {
                 val errorBody = response.body?.string() ?: "未知错误"
-                Logger.e("GeminiVisionProvider", "API 错误: ${response.code} - $errorBody")
+                Logger.e("GeminiVisionProvider", "API 请求失败: ${response.code}")
 
                 // 解析 Gemini 错误信息
                 val errorMessage = try {
@@ -126,8 +126,6 @@ class GeminiVisionProvider @Inject constructor(
             val responseBody = response.body?.string()
                 ?: throw VisionError.ApiError("响应为空")
 
-            Logger.d("GeminiVisionProvider", "API 响应: ${responseBody.take(500)}")
-
             // 手动解析 JSON，提取第一个 candidate 的 text
             val rawAnalysis = try {
                 val jsonObject = gson.fromJson(responseBody, com.google.gson.JsonObject::class.java)
@@ -143,10 +141,8 @@ class GeminiVisionProvider @Inject constructor(
                 throw VisionError.ApiError("解析响应失败: ${e.message}")
             }
 
-            Logger.d("GeminiVisionProvider", "视觉模型原始输出: $rawAnalysis")
-
             // 7. 解析结构化结果
-            return@withContext parseVisionResponse(rawAnalysis, userText)
+            return@withContext VisionResponseParser.parse(rawAnalysis, confidence = 0.85f)
 
         } catch (e: VisionError) {
             throw e
@@ -188,41 +184,6 @@ ${contextPart}请分析这张图片，并以结构化的方式提取以下信息
 
 如果某项不存在，输出"无"。保持简洁，每项不超过30字。
         """.trimIndent()
-    }
-
-    /**
-     * 解析视觉模型的结构化输出
-     */
-    private fun parseVisionResponse(rawResponse: String, userText: String): VisionAnalysis {
-        val lines = rawResponse.lines().map { it.trim() }
-
-        fun extractValue(key: String): String? {
-            val line = lines.find { it.startsWith(key) }
-            return line?.substringAfter(":")?.trim()?.takeIf { it != "无" && it.isNotBlank() }
-        }
-
-        val mainSubjects = extractValue("主要对象")
-            ?.split("、", ",", "，")
-            ?.map { it.trim() }
-            ?.filter { it.isNotBlank() }
-            ?: emptyList()
-
-        val actions = extractValue("动作")
-            ?.split("、", ",", "，")
-            ?.map { it.trim() }
-            ?.filter { it.isNotBlank() }
-            ?: emptyList()
-
-        return VisionAnalysis(
-            mainSubjects = mainSubjects,
-            environment = extractValue("环境"),
-            actions = actions,
-            textContent = extractValue("文字"),
-            mood = extractValue("氛围"),
-            contextualMeaning = extractValue("语境理解"),
-            confidence = 0.85f,  // Gemini 1.5 Flash 质量很高
-            rawResponse = rawResponse
-        )
     }
 
     /**

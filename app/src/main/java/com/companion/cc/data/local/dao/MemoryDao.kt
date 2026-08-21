@@ -53,6 +53,9 @@ interface MemoryDao {
     @Query("SELECT COUNT(*) FROM memories WHERE userId = :userId")
     suspend fun getMemoryCount(userId: String): Int
 
+    @Query("SELECT COUNT(*) FROM memories WHERE userId = :userId")
+    fun observeMemoryCount(userId: String): Flow<Int>
+
     // 删除旧记忆（保留最近N条）
     @Query("""
         DELETE FROM memories

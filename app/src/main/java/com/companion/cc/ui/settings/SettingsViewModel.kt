@@ -1,13 +1,20 @@
 package com.companion.cc.ui.settings
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.companion.cc.data.local.SettingsManager
+import com.companion.cc.data.remote.vision.SelfHostedVisionProvider
+import com.companion.cc.data.theme.VisualCustomizationManager
 import com.companion.cc.domain.manager.AIProviderManager
 import com.companion.cc.domain.manager.ApiParameters
 import com.companion.cc.domain.model.AIProvider
+import com.companion.cc.domain.model.BackdropTarget
 import com.companion.cc.domain.model.ProviderConfig
+import com.companion.cc.domain.model.VisionServiceMode
+import com.companion.cc.domain.model.VisualCustomization
 import com.companion.cc.domain.usecase.StreamSendMessageUseCase
+import com.companion.cc.ui.theme.VisualEffectsPreference
 import com.companion.cc.util.ErrorMessageHelper
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
@@ -18,7 +25,9 @@ import javax.inject.Inject
 class SettingsViewModel @Inject constructor(
     private val settingsManager: SettingsManager,
     private val providerManager: AIProviderManager,
-    private val streamSendMessageUseCase: StreamSendMessageUseCase
+    private val streamSendMessageUseCase: StreamSendMessageUseCase,
+    private val selfHostedVisionProvider: SelfHostedVisionProvider,
+    private val visualCustomizationManager: VisualCustomizationManager
 ) : ViewModel() {
 
     val apiKey = settingsManager.apiKeyFlow.stateIn(
@@ -50,6 +59,15 @@ class SettingsViewModel @Inject constructor(
         SharingStarted.WhileSubscribed(5000),
         "medium"
     )
+
+    val visualCustomization = visualCustomizationManager.customizationFlow.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        VisualCustomization.default()
+    )
+
+    private val _visualCustomizationMessage = MutableStateFlow<String?>(null)
+    val visualCustomizationMessage: StateFlow<String?> = _visualCustomizationMessage
 
     val userAvatar = settingsManager.userAvatarFlow.stateIn(
         viewModelScope,
@@ -84,6 +102,20 @@ class SettingsViewModel @Inject constructor(
 
     private val _visionApiKeySaved = MutableStateFlow(false)
     val visionApiKeySaved: StateFlow<Boolean> = _visionApiKeySaved
+
+    val visionServiceMode = settingsManager.visionServiceModeFlow
+        .map(VisionServiceMode::fromStoredValue)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), VisionServiceMode.GEMINI)
+
+    val isSelfHostedVisionPaired = settingsManager.selfHostedDeviceTokenFlow
+        .map { !it.isNullOrBlank() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    private val _isPairingSelfHostedVision = MutableStateFlow(false)
+    val isPairingSelfHostedVision: StateFlow<Boolean> = _isPairingSelfHostedVision
+
+    private val _selfHostedVisionMessage = MutableStateFlow<String?>(null)
+    val selfHostedVisionMessage: StateFlow<String?> = _selfHostedVisionMessage
 
     init {
         // 加载当前配置
@@ -156,6 +188,45 @@ class SettingsViewModel @Inject constructor(
             // 3秒后重置状态
             kotlinx.coroutines.delay(3000)
             _visionApiKeySaved.value = false
+        }
+    }
+
+    fun selectVisionService(mode: VisionServiceMode) {
+        viewModelScope.launch {
+            settingsManager.saveVisionServiceMode(mode.name)
+            _selfHostedVisionMessage.value = when (mode) {
+                VisionServiceMode.GEMINI -> null
+                VisionServiceMode.SELF_HOSTED -> if (isSelfHostedVisionPaired.value) {
+                    "已选择我的视觉服务器"
+                } else {
+                    "请输入一次性配对码以连接我的视觉服务器"
+                }
+            }
+        }
+    }
+
+    fun pairSelfHostedVision(pairingCode: String) {
+        viewModelScope.launch {
+            _isPairingSelfHostedVision.value = true
+            _selfHostedVisionMessage.value = null
+            selfHostedVisionProvider.pair(pairingCode)
+                .onSuccess {
+                    _selfHostedVisionMessage.value = "已连接到我的视觉服务器"
+                }
+                .onFailure { error ->
+                    _selfHostedVisionMessage.value = error.message ?: "配对失败，请检查配对码和网络"
+                }
+            _isPairingSelfHostedVision.value = false
+        }
+    }
+
+    fun unpairSelfHostedVision() {
+        viewModelScope.launch {
+            selfHostedVisionProvider.clearPairing()
+            if (visionServiceMode.value == VisionServiceMode.SELF_HOSTED) {
+                settingsManager.saveVisionServiceMode(VisionServiceMode.GEMINI.name)
+            }
+            _selfHostedVisionMessage.value = "已取消我的视觉服务器配对"
         }
     }
 
@@ -265,6 +336,78 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             settingsManager.saveFontSize(size)
             android.util.Log.d("SettingsViewModel", "字体大小已保存: $size")
+        }
+    }
+
+    fun selectVisualBackdrop(target: BackdropTarget, source: Uri) {
+        viewModelScope.launch {
+            _visualCustomizationMessage.value = null
+            runCatching {
+                visualCustomizationManager.replaceBackdrop(target, source)
+            }.onSuccess {
+                _visualCustomizationMessage.value = "背景已更新"
+            }.onFailure {
+                _visualCustomizationMessage.value = "无法使用这张背景图片"
+            }
+        }
+    }
+
+    fun clearVisualBackdrop(target: BackdropTarget) {
+        viewModelScope.launch {
+            visualCustomizationManager.clearBackdrop(target)
+            _visualCustomizationMessage.value = "背景已移除"
+        }
+    }
+
+    fun saveVisualAccent(accentHex: String?) {
+        viewModelScope.launch {
+            val current = visualCustomization.value
+            visualCustomizationManager.save(
+                current.copy(accentHex = accentHex?.trim()?.takeIf { it.isNotEmpty() })
+            )
+        }
+    }
+
+    fun saveVisualEffectsPreference(preference: VisualEffectsPreference) {
+        viewModelScope.launch {
+            visualCustomizationManager.save(
+                visualCustomization.value.copy(effectsPreference = preference)
+            )
+        }
+    }
+
+    fun saveGlassOpacity(opacity: Float) {
+        viewModelScope.launch {
+            visualCustomizationManager.save(
+                visualCustomization.value.copy(glassOpacity = opacity.coerceIn(0.28f, 0.88f))
+            )
+        }
+    }
+
+    fun resetVisualCustomization() {
+        viewModelScope.launch {
+            visualCustomizationManager.reset()
+            _visualCustomizationMessage.value = "外观已恢复默认"
+        }
+    }
+
+    fun saveBackdropAppearance(
+        target: BackdropTarget,
+        imageOpacity: Float,
+        scrimOpacity: Float
+    ) {
+        viewModelScope.launch {
+            val current = visualCustomization.value
+            visualCustomizationManager.save(
+                current.copy(
+                    backdrops = current.backdrops + (
+                        target to current.backdropFor(target).copy(
+                            imageOpacity = imageOpacity,
+                            scrimOpacity = scrimOpacity
+                        )
+                    )
+                )
+            )
         }
     }
 

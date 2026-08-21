@@ -26,8 +26,10 @@ class CustomCharacterRepository @Inject constructor(
     }
 
     /**
-     * 根据ID获取角色
+     * 根据ID获取角色（不检查用户权限，用于向后兼容）
+     * @deprecated 使用 getCharacterByIdForUser 替代
      */
+    @Deprecated("Use getCharacterByIdForUser instead")
     suspend fun getCharacterById(characterId: String): CustomCharacter? {
         return characterDao.getCharacterById(characterId)?.let {
             CustomCharacterMapper.toDomain(it)
@@ -35,10 +37,30 @@ class CustomCharacterRepository @Inject constructor(
     }
 
     /**
-     * 获取角色 Flow
+     * 根据ID获取角色（检查用户权限）
      */
+    suspend fun getCharacterByIdForUser(characterId: String, userId: String): CustomCharacter? {
+        return characterDao.getCharacterByIdForUser(characterId, userId)?.let {
+            CustomCharacterMapper.toDomain(it)
+        }
+    }
+
+    /**
+     * 获取角色 Flow（不检查用户权限，用于向后兼容）
+     * @deprecated 使用 getCharacterByIdFlowForUser 替代
+     */
+    @Deprecated("Use getCharacterByIdFlowForUser instead")
     fun getCharacterByIdFlow(characterId: String): Flow<CustomCharacter?> {
         return characterDao.getCharacterByIdFlow(characterId).map { entity ->
+            entity?.let { CustomCharacterMapper.toDomain(it) }
+        }
+    }
+
+    /**
+     * 获取角色 Flow（检查用户权限）
+     */
+    fun getCharacterByIdFlowForUser(characterId: String, userId: String): Flow<CustomCharacter?> {
+        return characterDao.getCharacterByIdFlowForUser(characterId, userId).map { entity ->
             entity?.let { CustomCharacterMapper.toDomain(it) }
         }
     }
@@ -80,5 +102,12 @@ class CustomCharacterRepository @Inject constructor(
      */
     suspend fun getCharacterCount(userId: String): Int {
         return characterDao.getCharacterCount(userId)
+    }
+
+    /**
+     * 重新分配角色所有权（从源用户ID迁移到目标用户ID）
+     */
+    suspend fun reassignCharacters(sourceUserId: String, targetUserId: String): Int {
+        return characterDao.reassignCharacters(sourceUserId, targetUserId)
     }
 }

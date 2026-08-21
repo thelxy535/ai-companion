@@ -15,6 +15,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.companion.cc.ui.theme.LocalVisualTheme
+import com.companion.cc.ui.theme.VisualChartColors
 import kotlin.math.max
 
 /**
@@ -26,6 +28,10 @@ fun MessageTrendChart(
     dailyData: List<DailyMessageData>,
     modifier: Modifier = Modifier
 ) {
+    val visualTheme = LocalVisualTheme.current
+    val trendColor = visualTheme.tokens.chart.trend
+    val gridColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+    val pointCenterColor = MaterialTheme.colorScheme.surface
     val animationProgress by animateFloatAsState(
         targetValue = 1f,
         animationSpec = tween(durationMillis = 1000, easing = FastOutSlowInEasing),
@@ -62,11 +68,15 @@ fun MessageTrendChart(
             val padding = 40f
 
             // 计算最大值
-            val maxValue = dailyData.maxOfOrNull { it.count }?.toFloat() ?: 1f
+            // Room flows can briefly expose a date group before its messages are
+            // loaded. Keep Canvas coordinates finite during that transition.
+            val maxValue = dailyData.maxOfOrNull { it.count.coerceAtLeast(0) }
+                ?.toFloat()
+                ?.coerceAtLeast(1f)
+                ?: 1f
             val drawableHeight = height - padding * 2
 
             // 绘制网格线
-            val gridColor = Color.LightGray.copy(alpha = 0.3f)
             for (i in 0..4) {
                 val y = padding + (drawableHeight / 4) * i
                 drawLine(
@@ -97,7 +107,7 @@ fun MessageTrendChart(
                 // 绘制线条
                 drawPath(
                     path = path,
-                    color = Color(0xFF2196F3),
+                    color = trendColor,
                     style = Stroke(width = 4f)
                 )
 
@@ -108,12 +118,12 @@ fun MessageTrendChart(
                     val y = height - padding - (normalizedValue * drawableHeight)
 
                     drawCircle(
-                        color = Color(0xFF2196F3),
+                        color = trendColor,
                         radius = 6f,
                         center = Offset(x, y)
                     )
                     drawCircle(
-                        color = Color.White,
+                        color = pointCenterColor,
                         radius = 3f,
                         center = Offset(x, y)
                     )
@@ -151,6 +161,10 @@ fun EmotionPieChart(
     emotionData: Map<String, Int>,
     modifier: Modifier = Modifier
 ) {
+    val chartColors = LocalVisualTheme.current.tokens.chart
+    val emotionColors = remember(emotionData.keys, chartColors) {
+        emotionData.keys.associateWith { emotion -> emotionColor(emotion, chartColors) }
+    }
     val animationProgress by animateFloatAsState(
         targetValue = 1f,
         animationSpec = tween(durationMillis = 1000, easing = FastOutSlowInEasing),
@@ -182,21 +196,17 @@ fun EmotionPieChart(
                     .size(120.dp)
                     .padding(8.dp)
             ) {
-                val total = emotionData.values.sum().toFloat()
+                val total = emotionData.values.sumOf { it.coerceAtLeast(0) }
+                    .toFloat()
+                    .coerceAtLeast(1f)
                 var startAngle = -90f
 
-                val colors = listOf(
-                    Color(0xFFFF6B6B), // 红色
-                    Color(0xFF4ECDC4), // 青色
-                    Color(0xFFFFE66D), // 黄色
-                    Color(0xFF95E1D3), // 绿色
-                    Color(0xFFC7CEEA)  // 紫色
-                )
-
-                emotionData.entries.forEachIndexed { index, (_, count) ->
-                    val sweepAngle = (count / total) * 360f * animationProgress
+                emotionData.entries
+                    .filter { it.value > 0 }
+                    .forEach { (emotion, count) ->
+                    val sweepAngle = (count.toFloat() / total) * 360f * animationProgress
                     drawArc(
-                        color = colors[index % colors.size],
+                        color = emotionColors.getValue(emotion),
                         startAngle = startAngle,
                         sweepAngle = sweepAngle,
                         useCenter = true,
@@ -213,20 +223,12 @@ fun EmotionPieChart(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                val colors = listOf(
-                    Color(0xFFFF6B6B),
-                    Color(0xFF4ECDC4),
-                    Color(0xFFFFE66D),
-                    Color(0xFF95E1D3),
-                    Color(0xFFC7CEEA)
-                )
-
-                emotionData.entries.forEachIndexed { index, (emotion, count) ->
+                emotionData.entries.forEach { (emotion, count) ->
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Canvas(modifier = Modifier.size(16.dp)) {
-                            drawCircle(color = colors[index % colors.size])
+                            drawCircle(color = emotionColors.getValue(emotion))
                         }
                         Text(
                             text = "$emotion: $count",
@@ -236,6 +238,18 @@ fun EmotionPieChart(
                 }
             }
         }
+    }
+}
+
+private fun emotionColor(emotion: String, colors: VisualChartColors): Color {
+    val normalized = emotion.trim().lowercase()
+    return when {
+        normalized.contains("爱") || normalized.contains("喜欢") || normalized.contains("affection") -> colors.affection
+        normalized.contains("信任") || normalized.contains("trust") -> colors.trust
+        normalized.contains("兴趣") || normalized.contains("interest") -> colors.interest
+        normalized.contains("开心") || normalized.contains("积极") || normalized.contains("happy") || normalized.contains("positive") -> colors.positive
+        normalized.contains("难过") || normalized.contains("消极") || normalized.contains("悲") || normalized.contains("sad") || normalized.contains("negative") -> colors.negative
+        else -> colors.neutral
     }
 }
 

@@ -1,5 +1,6 @@
 package com.companion.cc.ui.character
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -9,9 +10,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.companion.cc.ui.theme.GlassSurface
 
 /**
  * 自定义步骤枚举
@@ -34,13 +38,12 @@ fun CharacterCustomizationScreen(
     viewModel: CharacterCustomizationViewModel = hiltViewModel()
 ) {
     var currentStep by remember { mutableStateOf(CustomizationStep.BASIC_INFO) }
-    var shouldNavigateBack by remember { mutableStateOf(false) }
 
     // 实时获取表单字段以验证
     val name by viewModel.name.collectAsState()
     val description by viewModel.description.collectAsState()
     val backstory by viewModel.backstory.collectAsState()
-    val isLoading by viewModel.isLoading.collectAsState()
+    val saveState by viewModel.saveState.collectAsState()
 
     val isFormValid = name.isNotBlank() && description.isNotBlank() && backstory.isNotBlank()
 
@@ -51,27 +54,34 @@ fun CharacterCustomizationScreen(
     }
 
     // 监听保存成功后返回
-    val errorMessage by viewModel.errorMessage.collectAsState()
-
-    LaunchedEffect(isLoading, errorMessage) {
-        // 当加载完成且没有错误时，才导航返回
-        if (shouldNavigateBack && !isLoading && errorMessage == null) {
+    LaunchedEffect(saveState) {
+        if (saveState is CharacterSaveState.Success) {
+            viewModel.consumeSaveResult()
             onNavigateBack()
-            shouldNavigateBack = false
         }
     }
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            GlassSurface(
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(0.dp),
+                useStrongFill = true
+            ) {
+                TopAppBar(
                 title = { Text(if (characterId != null) "编辑角色" else "创建角色") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.Default.ArrowBack, "返回")
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent
+                )
             )
-        }
+            }
+        },
+        containerColor = Color.Transparent
     ) { padding ->
         Column(
             modifier = Modifier
@@ -130,18 +140,17 @@ fun CharacterCustomizationScreen(
                     onClick = {
                         if (currentStep == CustomizationStep.EXAMPLES) {
                             viewModel.saveCharacter()
-                            shouldNavigateBack = true
                         } else {
                             currentStep = CustomizationStep.values()[currentStep.ordinal + 1]
                         }
                     },
                     enabled = when (currentStep) {
-                        CustomizationStep.BASIC_INFO -> isFormValid && !isLoading
-                        CustomizationStep.EXAMPLES -> !isLoading
-                        else -> !isLoading
+                        CustomizationStep.BASIC_INFO -> isFormValid && saveState !is CharacterSaveState.Saving
+                        CustomizationStep.EXAMPLES -> saveState !is CharacterSaveState.Saving
+                        else -> saveState !is CharacterSaveState.Saving
                     }
                 ) {
-                    if (isLoading && currentStep == CustomizationStep.EXAMPLES) {
+                    if (saveState is CharacterSaveState.Saving && currentStep == CustomizationStep.EXAMPLES) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(20.dp),
                             color = MaterialTheme.colorScheme.onPrimary,
@@ -180,32 +189,34 @@ fun StepIndicator(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.weight(1f)
             ) {
-                Surface(
-                    shape = MaterialTheme.shapes.small,
-                    color = when {
-                        index < currentStep -> MaterialTheme.colorScheme.primary
-                        index == currentStep -> MaterialTheme.colorScheme.primaryContainer
-                        else -> MaterialTheme.colorScheme.surfaceVariant
-                    },
-                    modifier = Modifier.size(40.dp)
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(MaterialTheme.shapes.small)
+                        .background(
+                            when {
+                                index < currentStep -> MaterialTheme.colorScheme.primary
+                                index == currentStep -> MaterialTheme.colorScheme.primaryContainer
+                                else -> MaterialTheme.colorScheme.surfaceVariant
+                            }
+                        )
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        if (index < currentStep) {
-                            Icon(
-                                Icons.Default.Check,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onPrimary
-                            )
-                        } else {
-                            Text(
-                                text = "${index + 1}",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = when {
-                                    index == currentStep -> MaterialTheme.colorScheme.onPrimaryContainer
-                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
-                                }
-                            )
-                        }
+                    if (index < currentStep) {
+                        Icon(
+                            Icons.Default.Check,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimary
+                        )
+                    } else {
+                        Text(
+                            text = "${index + 1}",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = when {
+                                index == currentStep -> MaterialTheme.colorScheme.onPrimaryContainer
+                                else -> MaterialTheme.colorScheme.onSurfaceVariant
+                            }
+                        )
                     }
                 }
                 Spacer(modifier = Modifier.height(8.dp))

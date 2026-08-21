@@ -17,6 +17,8 @@ interface MessageRepository {
 
     suspend fun getMessageCount(userId: String): Int
 
+    fun observeMessageCount(userId: String): Flow<Int>
+
     suspend fun deleteAllMessages(userId: String)
 
     suspend fun deleteMessage(messageId: String)
@@ -39,4 +41,13 @@ interface MessageRepository {
         companionId: String?,
         query: String
     ): Flow<List<Message>>
+
+    /**
+     * 观察特定角色的最新消息
+     *
+     * @param userId 用户ID
+     * @param companionId 角色ID
+     * @return 最新消息的 Flow，如果没有消息则为 null
+     */
+    fun observeLatestMessage(userId: String, companionId: String): Flow<Message?>
 }

@@ -2,6 +2,8 @@ package com.companion.cc.ui.character
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.companion.cc.domain.character.CharacterCatalog
+import com.companion.cc.domain.identity.CurrentUserProvider
 import com.companion.cc.domain.manager.CharacterCustomizationManager
 import com.companion.cc.domain.model.*
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -14,16 +16,22 @@ import javax.inject.Inject
  */
 @HiltViewModel
 class CharacterCustomizationViewModel @Inject constructor(
-    private val characterManager: CharacterCustomizationManager
+    private val characterManager: CharacterCustomizationManager,
+    private val currentUserProvider: CurrentUserProvider,
+    private val characterCatalog: CharacterCatalog
 ) : ViewModel() {
-
-    // 用户角色列表
-    private val _characters = MutableStateFlow<List<CustomCharacter>>(emptyList())
-    val characters: StateFlow<List<CustomCharacter>> = _characters.asStateFlow()
 
     // 当前编辑的角色
     private val _currentCharacter = MutableStateFlow<CustomCharacter?>(null)
     val currentCharacter: StateFlow<CustomCharacter?> = _currentCharacter.asStateFlow()
+
+    // 保存状态
+    private val _saveState = MutableStateFlow<CharacterSaveState>(CharacterSaveState.Idle)
+    val saveState: StateFlow<CharacterSaveState> = _saveState.asStateFlow()
+
+    // 所有角色（来自 CharacterCatalog）
+    val characters: StateFlow<List<ChatCharacter>> = characterCatalog.observeCharacters()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // 表单字段
     private val _name = MutableStateFlow("")
@@ -35,7 +43,7 @@ class CharacterCustomizationViewModel @Inject constructor(
     private val _backstory = MutableStateFlow("")
     val backstory: StateFlow<String> = _backstory.asStateFlow()
 
-    private val _greetingMessage = MutableStateFlow("")
+    private val _greetingMessage = MutableStateFlow("你好，很高兴见到你！")
     val greetingMessage: StateFlow<String> = _greetingMessage.asStateFlow()
 
     private val _personality = MutableStateFlow(PersonalityTraits.default())
@@ -50,43 +58,14 @@ class CharacterCustomizationViewModel @Inject constructor(
     private val _exampleDialogues = MutableStateFlow<List<ExampleDialogue>>(emptyList())
     val exampleDialogues: StateFlow<List<ExampleDialogue>> = _exampleDialogues.asStateFlow()
 
-    // UI 状态
-    private val _isLoading = MutableStateFlow(false)
-    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
-
-    private val _errorMessage = MutableStateFlow<String?>(null)
-    val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
-
-    init {
-        loadCharacters()
-    }
-
-    /**
-     * 加载用户的所有角色
-     */
-    fun loadCharacters(userId: String = "default") {
-        viewModelScope.launch {
-            characterManager.getUserCharacters(userId).collect { list ->
-                _characters.value = list
-            }
-        }
-    }
-
-    /**
-     * 开始创建新角色
-     */
-    fun startCreateCharacter() {
-        resetForm()
-        _currentCharacter.value = null
-    }
-
     /**
      * 加载角色进行编辑
      */
     fun loadCharacterForEdit(characterId: String) {
         viewModelScope.launch {
             try {
-                val character = characterManager.getCharacter(characterId)
+                val userId = currentUserProvider.requireUserId()
+                val character = characterManager.getCharacter(userId, characterId)
                 if (character != null) {
                     _currentCharacter.value = character
                     _name.value = character.name
@@ -99,61 +78,68 @@ class CharacterCustomizationViewModel @Inject constructor(
                     _exampleDialogues.value = character.exampleDialogues
                 }
             } catch (e: Exception) {
-                _errorMessage.value = "加载角色失败: ${e.message}"
+                _saveState.value = CharacterSaveState.Failure("加载角色失败: ${e.message}")
             }
         }
     }
 
     /**
+     * 开始新角色创建
+     */
+    fun startNewCharacter() {
+        resetForm()
+        _currentCharacter.value = null
+    }
+
+    /**
      * 保存角色
      */
-    fun saveCharacter(userId: String = "default") {
+    fun saveCharacter() {
+        if (_saveState.value is CharacterSaveState.Saving) {
+            return // 防止重复保存
+        }
+
         viewModelScope.launch {
-            _isLoading.value = true
-            _errorMessage.value = null
-            try {
-                android.util.Log.d("CharacterVM", "开始保存角色")
-                val current = _currentCharacter.value
-                if (current != null) {
-                    // 更新现有角色
-                    android.util.Log.d("CharacterVM", "更新现有角色: ${current.id}")
-                    val updated = current.copy(
-                        name = _name.value,
-                        description = _description.value,
-                        backstory = _backstory.value,
-                        greetingMessage = _greetingMessage.value,
-                        personality = _personality.value,
-                        behaviorRules = _behaviorRules.value,
-                        voiceConfig = _voiceConfig.value,
-                        exampleDialogues = _exampleDialogues.value
+            _saveState.value = CharacterSaveState.Saving
+            _saveState.value = try {
+                val userId = currentUserProvider.requireUserId()
+                val saved = _currentCharacter.value?.let { existing ->
+                    characterManager.updateCharacter(
+                        existing.copy(
+                            name = _name.value,
+                            description = _description.value,
+                            personality = _personality.value,
+                            backstory = _backstory.value,
+                            greetingMessage = _greetingMessage.value,
+                            behaviorRules = _behaviorRules.value,
+                            voiceConfig = _voiceConfig.value,
+                            exampleDialogues = _exampleDialogues.value,
+                        )
                     )
-                    characterManager.updateCharacter(updated)
-                    android.util.Log.d("CharacterVM", "更新成功")
-                } else {
-                    // 创建新角色
-                    android.util.Log.d("CharacterVM", "创建新角色: name=${_name.value}")
-                    characterManager.createCharacter(
-                        userId = userId,
-                        name = _name.value,
-                        description = _description.value,
-                        personality = _personality.value,
-                        backstory = _backstory.value,
-                        greetingMessage = _greetingMessage.value,
-                        exampleDialogues = _exampleDialogues.value,
-                        voiceConfig = _voiceConfig.value,
-                        behaviorRules = _behaviorRules.value
-                    )
-                    android.util.Log.d("CharacterVM", "创建成功")
-                }
-                // 重新加载角色列表
-                loadCharacters(userId)
-                android.util.Log.d("CharacterVM", "保存完成，角色列表已刷新")
-            } catch (e: Exception) {
-                android.util.Log.e("CharacterVM", "保存失败", e)
-                _errorMessage.value = "保存失败: ${e.message}"
-            } finally {
-                _isLoading.value = false
+                } ?: characterManager.createCharacter(
+                    userId = userId,
+                    name = _name.value,
+                    description = _description.value,
+                    personality = _personality.value,
+                    backstory = _backstory.value,
+                    greetingMessage = _greetingMessage.value,
+                    exampleDialogues = _exampleDialogues.value,
+                    voiceConfig = _voiceConfig.value,
+                    behaviorRules = _behaviorRules.value,
+                )
+                CharacterSaveState.Success(saved.id)
+            } catch (error: Exception) {
+                CharacterSaveState.Failure(error.message ?: "保存角色失败")
             }
+        }
+    }
+
+    /**
+     * 消费保存成功结果（UI 调用以重置状态）
+     */
+    fun consumeSaveResult() {
+        if (_saveState.value is CharacterSaveState.Success) {
+            _saveState.value = CharacterSaveState.Idle
         }
     }
 
@@ -163,9 +149,10 @@ class CharacterCustomizationViewModel @Inject constructor(
     fun deleteCharacter(characterId: String) {
         viewModelScope.launch {
             try {
-                characterManager.deleteCharacter(characterId)
+                val userId = currentUserProvider.requireUserId()
+                characterManager.deleteCharacter(userId, characterId)
             } catch (e: Exception) {
-                _errorMessage.value = "删除失败: ${e.message}"
+                _saveState.value = CharacterSaveState.Failure("删除失败: ${e.message}")
             }
         }
     }
@@ -187,16 +174,23 @@ class CharacterCustomizationViewModel @Inject constructor(
         _greetingMessage.value = value
     }
 
+    fun updatePersonality(value: PersonalityTraits) {
+        _personality.value = value
+    }
+
     fun updatePersonalityTrait(trait: String, value: Float) {
-        val current = _personality.value
         _personality.value = when (trait) {
-            "openness" -> current.copy(openness = value)
-            "conscientiousness" -> current.copy(conscientiousness = value)
-            "extraversion" -> current.copy(extraversion = value)
-            "agreeableness" -> current.copy(agreeableness = value)
-            "neuroticism" -> current.copy(neuroticism = value)
-            else -> current
+            "openness" -> _personality.value.copy(openness = value)
+            "conscientiousness" -> _personality.value.copy(conscientiousness = value)
+            "extraversion" -> _personality.value.copy(extraversion = value)
+            "agreeableness" -> _personality.value.copy(agreeableness = value)
+            "neuroticism" -> _personality.value.copy(neuroticism = value)
+            else -> _personality.value
         }
+    }
+
+    fun updateBehaviorRules(value: BehaviorRules) {
+        _behaviorRules.value = value
     }
 
     fun updateResponseStyle(style: ResponseStyle) {
@@ -211,24 +205,20 @@ class CharacterCustomizationViewModel @Inject constructor(
         _behaviorRules.value = _behaviorRules.value.copy(formalityLevel = level)
     }
 
-    fun updateVoicePitch(pitch: Float) {
-        _voiceConfig.value = _voiceConfig.value.copy(pitch = pitch)
+    fun updateVoiceConfig(value: VoiceConfig) {
+        _voiceConfig.value = value
     }
 
-    fun updateVoiceSpeed(speed: Float) {
-        _voiceConfig.value = _voiceConfig.value.copy(speed = speed)
+    fun updateExampleDialogues(value: List<ExampleDialogue>) {
+        _exampleDialogues.value = value
     }
 
-    fun addExampleDialogue(user: String, assistant: String) {
-        _exampleDialogues.value = _exampleDialogues.value + ExampleDialogue(user, assistant)
+    fun addExampleDialogue(dialogue: ExampleDialogue) {
+        _exampleDialogues.value = _exampleDialogues.value + dialogue
     }
 
     fun removeExampleDialogue(index: Int) {
         _exampleDialogues.value = _exampleDialogues.value.filterIndexed { i, _ -> i != index }
-    }
-
-    fun clearError() {
-        _errorMessage.value = null
     }
 
     /**

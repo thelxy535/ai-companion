@@ -54,3 +54,11 @@ obj/
 
 # Signing files
 .signing/
+
+# JVM crash dumps
+hs_err_pid*.log
+replay_pid*.log
+
+# Local build/test scratch
+build.log
+*.tmp

@@ -4,16 +4,14 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Modifier
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.companion.cc.data.local.SettingsManager
+import com.companion.cc.data.theme.VisualCustomizationManager
+import com.companion.cc.domain.model.VisualCustomization
 import com.companion.cc.ui.CCApp
-import com.companion.cc.ui.theme.CCTheme
+import com.companion.cc.ui.theme.AppVisualTheme
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -22,6 +20,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var settingsManager: SettingsManager
+
+    @Inject
+    lateinit var visualCustomizationManager: VisualCustomizationManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // Splash Screen
@@ -32,6 +33,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             val themeMode by settingsManager.themeModeFlow.collectAsState(initial = "system")
             val fontSize by settingsManager.fontSizeFlow.collectAsState(initial = "medium")
+            val visualCustomization by visualCustomizationManager.customizationFlow.collectAsState(
+                initial = VisualCustomization.default()
+            )
             val systemInDarkTheme = isSystemInDarkTheme()
 
             val darkTheme = when (themeMode) {
@@ -40,13 +44,12 @@ class MainActivity : ComponentActivity() {
                 else -> systemInDarkTheme  // "system" 或其他值跟随系统
             }
 
-            CCTheme(darkTheme = darkTheme, fontSize = fontSize) {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
-                    CCApp()
-                }
+            AppVisualTheme(
+                darkTheme = darkTheme,
+                fontSize = fontSize,
+                customization = visualCustomization
+            ) {
+                CCApp()
             }
         }
     }

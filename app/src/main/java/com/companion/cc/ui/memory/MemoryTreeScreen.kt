@@ -469,8 +469,8 @@ private fun MemoryDateGroup(
     Column {
         // 日期标题
         CompactGlassSurface(
+            modifier = Modifier.fillMaxWidth(),
             onClick = { isExpanded = !isExpanded },
-            fillOverride = MaterialTheme.colorScheme.surfaceVariant,
             shape = MaterialTheme.shapes.small
         ) {
             Row(
@@ -523,9 +523,9 @@ private fun MemoryDateGroup(
 @Composable
 private fun MemoryItem(message: Message) {
     val visualTheme = LocalVisualTheme.current
-    CompactGlassSurface(
+    Surface(
         onClick = { /* 打开详情 */ },
-        fillOverride = Color.Transparent,
+        color = Color.Transparent,
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -543,9 +543,7 @@ private fun MemoryItem(message: Message) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = message.content,
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
+                    style = MaterialTheme.typography.bodyMedium
                 )
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -568,9 +566,9 @@ private fun MemoryItem(message: Message) {
 
             // 重要性标记
             if (message.importance > 80) {
-                CompactGlassSurface(
+                Surface(
                     shape = MaterialTheme.shapes.extraSmall,
-                    fillOverride = visualTheme.tokens.status.importanceContainer
+                    color = visualTheme.tokens.status.importanceContainer
                 ) {
                     Box(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),

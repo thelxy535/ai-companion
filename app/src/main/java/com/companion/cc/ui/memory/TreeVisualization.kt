@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.sp
 import com.companion.cc.domain.model.Message
 import com.companion.cc.domain.model.MessageRole
 import com.companion.cc.domain.model.MessagesByDate
+import com.companion.cc.ui.theme.CompactGlassSurface
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -59,7 +60,6 @@ private fun TreeDateNode(dateGroup: MessagesByDate) {
             subtitle = "${dateGroup.count} 条记忆",
             isExpanded = isExpanded,
             onToggle = { isExpanded = !isExpanded },
-            level = 0,
             color = MaterialTheme.colorScheme.primary
         )
 
@@ -104,7 +104,6 @@ private fun TreeMessageNode(
                 subtitle = message.content.take(50) + if (message.content.length > 50) "..." else "",
                 isExpanded = isExpanded,
                 onToggle = { isExpanded = !isExpanded },
-                level = level,
                 color = if (message.role == MessageRole.USER)
                     MaterialTheme.colorScheme.tertiary
                 else
@@ -114,7 +113,7 @@ private fun TreeMessageNode(
 
             // 展开后显示完整内容和详细信息
             if (isExpanded) {
-                MessageDetailCard(message = message, level = level + 1)
+                MessageDetailCard(message = message)
             }
         }
     }
@@ -162,17 +161,14 @@ private fun TreeNodeCard(
     subtitle: String,
     isExpanded: Boolean,
     onToggle: () -> Unit,
-    level: Int,
     color: Color,
     importance: Int = 50
 ) {
-    Surface(
+    CompactGlassSurface(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onToggle),
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-        tonalElevation = (level * 2).dp
+        shape = RoundedCornerShape(12.dp)
     ) {
         Row(
             modifier = Modifier
@@ -182,19 +178,19 @@ private fun TreeNodeCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             // 图标
-            Surface(
-                shape = CircleShape,
-                color = color.copy(alpha = 0.2f),
-                modifier = Modifier.size(40.dp)
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(color.copy(alpha = 0.2f)),
+                contentAlignment = Alignment.Center
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        tint = color,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = color,
+                    modifier = Modifier.size(20.dp)
+                )
             }
 
             // 内容
@@ -237,14 +233,14 @@ private fun TreeNodeCard(
 }
 
 @Composable
-private fun MessageDetailCard(message: Message, level: Int) {
+private fun MessageDetailCard(message: Message) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 8.dp),
         shape = RoundedCornerShape(8.dp),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = (level * 2).dp
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
+        tonalElevation = 0.dp
     ) {
         Column(
             modifier = Modifier.padding(12.dp),

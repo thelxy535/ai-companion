@@ -28,6 +28,9 @@ interface MessageDao {
     @Query("SELECT COUNT(*) FROM messages WHERE user_id = :userId")
     suspend fun getMessageCount(userId: String): Int
 
+    @Query("SELECT COUNT(*) FROM messages WHERE user_id = :userId")
+    fun observeMessageCount(userId: String): Flow<Int>
+
     @Query("DELETE FROM messages WHERE user_id = :userId")
     suspend fun deleteAllMessages(userId: String)
 
@@ -68,4 +71,19 @@ interface MessageDao {
         companionId: String?,
         query: String
     ): Flow<List<MessageEntity>>
+
+    /**
+     * 观察特定角色的最新消息
+     *
+     * @param userId 用户ID
+     * @param companionId 角色ID
+     * @return 最新消息的 Flow，如果没有消息则为 null
+     */
+    @Query("""
+        SELECT * FROM messages
+        WHERE user_id = :userId AND companion_id = :companionId
+        ORDER BY timestamp DESC
+        LIMIT 1
+    """)
+    fun observeLatestMessage(userId: String, companionId: String): Flow<MessageEntity?>
 }

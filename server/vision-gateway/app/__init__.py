@@ -1,0 +1,1 @@
+"""CC Vision Gateway package."""

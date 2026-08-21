@@ -11,6 +11,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -18,6 +19,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.companion.cc.domain.model.companions
 import com.companion.cc.ui.chat.ChatViewModel
 import com.companion.cc.ui.components.CompanionAvatar
+import com.companion.cc.ui.theme.GlassSurface
+import com.companion.cc.ui.components.UtilitySection
 import java.util.concurrent.TimeUnit
 
 /**
@@ -42,7 +45,6 @@ fun CompanionDetailScreen(
 
     // 从ViewModel获取真实数据
     val messages by viewModel.messages.collectAsState()
-    val conversationStats by viewModel.conversationStats.collectAsState()
     val emotionalState by viewModel.emotionalState.collectAsState()
     val companionAvatar by viewModel.companionAvatar.collectAsState()
 
@@ -66,15 +68,25 @@ fun CompanionDetailScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            GlassSurface(
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(0.dp),
+                useStrongFill = true
+            ) {
+                TopAppBar(
                 title = { Text("关于她") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "返回")
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent
+                )
             )
-        }
+            }
+        },
+        containerColor = Color.Transparent
     ) { padding ->
         Column(
             modifier = Modifier
@@ -128,70 +140,31 @@ fun CompanionDetailScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // 信息卡片（情感化表达）
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            UtilitySection(title = "关系概览") {
+                InfoRow(label = "相识", value = formatTimeSince(firstMetDate))
+                Divider(modifier = Modifier.padding(vertical = 12.dp))
+                InfoRow(
+                    label = "聊天",
+                    value = when {
+                        messageCount < 50 -> "刚开始认识"
+                        messageCount < 200 -> "聊了不少"
+                        messageCount < 500 -> "聊了好久了"
+                        else -> "老朋友了"
+                    }
                 )
-            ) {
-                Column(
-                    modifier = Modifier.padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    // 认识时间
-                    InfoRow(
-                        label = "相识",
-                        value = formatTimeSince(firstMetDate)
-                    )
-
-                    Divider()
-
-                    // 聊天情况（简化表达）
-                    InfoRow(
-                        label = "聊天",
-                        value = when {
-                            messageCount < 50 -> "刚开始认识"
-                            messageCount < 200 -> "聊了不少"
-                            messageCount < 500 -> "聊了好久了"
-                            else -> "老朋友了"
-                        }
-                    )
-
-                    Divider()
-
-                    // 最近状态
-                    InfoRow(
-                        label = "最近",
-                        value = recentMood
-                    )
-                }
+                Divider(modifier = Modifier.padding(vertical = 12.dp))
+                InfoRow(label = "最近", value = recentMood)
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // 性格特点卡片
-            Card(
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier.padding(20.dp)
-                ) {
-                    Text(
-                        text = "关于 ${companion.name}",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Text(
-                        text = companion.description,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        lineHeight = 24.sp
-                    )
-                }
+            UtilitySection(title = "关于 ${companion.name}") {
+                Text(
+                    text = companion.description,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    lineHeight = 24.sp
+                )
             }
 
             // 底部留白

@@ -39,4 +39,10 @@ interface VectorMemoryDao {
 
     @Query("SELECT COUNT(*) FROM vector_memories WHERE userId = :userId AND companionId = :companionId")
     suspend fun getCount(userId: String, companionId: String): Int
+
+    @Query("SELECT COUNT(*) FROM vector_memories WHERE userId = :userId")
+    fun observeCount(userId: String): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM vector_memories WHERE userId = :userId AND companionId = :companionId")
+    fun observeCount(userId: String, companionId: String): Flow<Int>
 }

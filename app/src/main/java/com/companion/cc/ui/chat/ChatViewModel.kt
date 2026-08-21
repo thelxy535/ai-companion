@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.companion.cc.data.local.SettingsManager
 import com.companion.cc.di.ApplicationScope
 import com.companion.cc.domain.manager.*
+import com.companion.cc.domain.identity.CurrentUserProvider
 import com.companion.cc.domain.engine.EmotionalEngine
 import com.companion.cc.domain.model.EmotionalState
 import com.companion.cc.domain.model.Message
@@ -13,6 +14,7 @@ import com.companion.cc.domain.model.MessageRole
 import com.companion.cc.domain.model.ChatError
 import com.companion.cc.domain.model.VisionError
 import com.companion.cc.domain.model.toChatError
+import com.companion.cc.domain.model.ChatCharacter
 import com.companion.cc.domain.repository.MessageRepository
 import com.companion.cc.domain.usecase.*
 import com.companion.cc.domain.memory.MemoryRetrievalService
@@ -61,7 +63,14 @@ class ChatViewModel @Inject constructor(
     private val tagDao: com.companion.cc.data.local.dao.TagDao,  // 标签系统
     private val timeContextManager: TimeContextManager,  // 时间上下文管理器
     private val eventTracker: EventTracker,  // 事件追踪器
-    private val customCharacterRepository: com.companion.cc.domain.repository.CustomCharacterRepository,  // 自定义角色仓库
+    private val customCharacterRepository: com.companion.cc.domain.repository.CustomCharacterRepository,  // 自定义角色仓库（保留兼容）
+
+    // Task 6 新增：统一角色管理
+    private val characterCatalog: CharacterCatalog,
+    private val currentUserProvider: CurrentUserProvider,
+
+    // 打字状态管理器
+    private val typingStateManager: TypingStateManager,
 
     // 应用级别的 Scope（替代 GlobalScope）
     @ApplicationScope private val applicationScope: CoroutineScope
@@ -70,14 +79,14 @@ class ChatViewModel @Inject constructor(
     private val drafts = mutableMapOf<String, String>()
     private val stateCache = mutableMapOf<String, Any>()
 
-    // 使用真实的用户ID，而不是硬编码的 "default"
-    private val userIdFlow: StateFlow<String> = settingsManager.userIdFlow.stateIn(
+    // 使用 CurrentUserProvider 提供的真实用户ID
+    private val userIdFlow: StateFlow<String> = currentUserProvider.userId.stateIn(
         scope = viewModelScope,
         started = SharingStarted.Eagerly,
-        initialValue = "default"
+        initialValue = "" // 空字符串作为初始值，实际值从 DataStore 加载
     )
 
-    private fun getUserId(): String = userIdFlow.value
+    private suspend fun getUserId(): String = currentUserProvider.requireUserId()
 
     private suspend fun appendMemory2Context(basePrompt: String, companionId: String, query: String): String {
         return runCatching {
@@ -129,9 +138,8 @@ class ChatViewModel @Inject constructor(
     private val _conversationStats = MutableStateFlow(ConversationStats())
     val conversationStats: StateFlow<ConversationStats> = _conversationStats.asStateFlow()
 
-    // 正在回复的角色列表（持久化状态，退出页面不丢失）
-    private val _replyingCompanions = MutableStateFlow<Set<String>>(emptySet())
-    val replyingCompanions: StateFlow<Set<String>> = _replyingCompanions.asStateFlow()
+    // 正在回复的角色列表（使用全局持久化状态）
+    val replyingCompanions: StateFlow<Set<String>> = typingStateManager.typingCharacters
 
     // 最新流式显示的消息 ID（只有这条消息需要播放逐字动画）
     private val _latestStreamingMessageId = MutableStateFlow<String?>(null)
@@ -146,6 +154,7 @@ class ChatViewModel @Inject constructor(
 
     // 当前伴侣头像（动态根据 companionId 获取）
     private val _currentCompanionId = MutableStateFlow<String?>(null)
+    @OptIn(ExperimentalCoroutinesApi::class)
     val companionAvatar: StateFlow<String?> = _currentCompanionId.flatMapLatest { companionId ->
         if (companionId != null) {
             settingsManager.getCompanionAvatarFlow(companionId)
@@ -171,9 +180,13 @@ class ChatViewModel @Inject constructor(
 
     // 当前角色信息
     private val _currentCharacterId = MutableStateFlow<String?>(null)
-    private val _isCustomCharacter = MutableStateFlow(false)
+    private val _isCustomCharacter = MutableStateFlow(false)  // 保留但不再使用
     private val _customCharacterName = MutableStateFlow<String?>(null)
     val customCharacterName: StateFlow<String?> = _customCharacterName.asStateFlow()
+
+    // Task 6 新增：统一的角色模型
+    private val _currentCharacter = MutableStateFlow<ChatCharacter?>(null)
+    val currentCharacter: StateFlow<ChatCharacter?> = _currentCharacter.asStateFlow()
 
     init {
         // 初始化语音管理器
@@ -191,35 +204,71 @@ class ChatViewModel @Inject constructor(
     }
 
     /**
-     * 设置当前角色（支持自定义角色和默认角色）
+     * 设置当前角色（统一通过 CharacterCatalog 加载）
+     * @param characterId 角色ID（内置或自定义）
      */
-    fun setCharacter(characterId: String, isCustomCharacter: Boolean) {
+    fun setCharacter(characterId: String) {
         _currentCharacterId.value = characterId
-        _isCustomCharacter.value = isCustomCharacter
         _currentCompanionId.value = characterId
 
         // 加载角色的聊天历史
         loadMessages(characterId)
 
-        // 如果是自定义角色，加载角色的人格设定
-        if (isCustomCharacter) {
-            viewModelScope.launch {
-                try {
-                    val character = customCharacterRepository.getCharacterById(characterId)
-                    if (character != null) {
-                        _customCharacterName.value = character.name
-                        Logger.d("ChatViewModel", "加载自定义角色成功: ${character.name}")
-                        // TODO: 设置角色人格到 PersonalityManager
-                    } else {
-                        Logger.w("ChatViewModel", "未找到自定义角色: $characterId")
+        // 通过 CharacterCatalog 加载角色信息
+        viewModelScope.launch {
+            try {
+                val userId = currentUserProvider.requireUserId()
+                val character = characterCatalog.getCharacter(userId, characterId)
+
+                if (character != null) {
+                    _currentCharacter.value = character
+
+                    // 根据角色类型更新状态
+                    when (character) {
+                        is ChatCharacter.Custom -> {
+                            _isCustomCharacter.value = true
+                            _customCharacterName.value = character.name
+                            Logger.d("ChatViewModel", "加载自定义角色成功: ${character.name}")
+
+                            // 将自定义角色注册到 PersonalityManager
+                            val companionPersonality = com.companion.cc.domain.model.CompanionPersonality(
+                                id = character.id,
+                                name = character.name,
+                                greeting = "你好，我是${character.name}",
+                                systemPrompt = character.personality,
+                                traits = listOf(character.description),
+                                responseStyle = "友好",
+                                apiParameters = mapOf(
+                                    "temperature" to 0.8f,
+                                    "top_p" to 0.9f
+                                )
+                            )
+                            personalityManager.registerCompanion(companionPersonality)
+                            Logger.d("ChatViewModel", "已注册自定义人格: ${character.name}")
+                        }
+                        is ChatCharacter.BuiltIn -> {
+                            _isCustomCharacter.value = false
+                            _customCharacterName.value = null
+                            Logger.d("ChatViewModel", "加载内置角色: ${character.name}")
+                        }
                     }
-                } catch (e: Exception) {
-                    Logger.e("ChatViewModel", "加载自定义角色失败", e)
+                } else {
+                    Logger.w("ChatViewModel", "Character not found or access denied: $characterId")
+                    _error.value = ChatError.CharacterNotFound
                 }
+            } catch (e: Exception) {
+                Logger.e("ChatViewModel", "Failed to load character", e)
+                _error.value = e.toChatError()
             }
-        } else {
-            _customCharacterName.value = null
         }
+    }
+
+    /**
+     * 向后兼容方法（保留但标记为 Deprecated）
+     */
+    @Deprecated("Use setCharacter(characterId) instead", ReplaceWith("setCharacter(characterId)"))
+    fun setCharacter(characterId: String, isCustomCharacter: Boolean) {
+        setCharacter(characterId)
     }
 
     // ==================== 草稿功能 ====================
@@ -359,7 +408,7 @@ class ChatViewModel @Inject constructor(
             _error.value = null
 
             // 标记该角色正在回复
-            _replyingCompanions.value = _replyingCompanions.value + companionId
+            typingStateManager.startTyping(companionId)
             onlineStatusManager.setOnline(companionId)
 
             try {
@@ -560,13 +609,13 @@ class ChatViewModel @Inject constructor(
                     _latestStreamingMessageId.value = null
                 }
 
-                _replyingCompanions.value = _replyingCompanions.value - companionId
+                typingStateManager.stopTyping(companionId)
                 onlineStatusManager.setOffline(companionId)
                 _isLoading.value = false
 
             } catch (e: CancellationException) {
                 _latestStreamingMessageId.value = null
-                _replyingCompanions.value = _replyingCompanions.value - companionId
+                typingStateManager.stopTyping(companionId)
                 onlineStatusManager.setOffline(companionId)
                 _isLoading.value = false
                 throw e
@@ -574,7 +623,7 @@ class ChatViewModel @Inject constructor(
                 Logger.e("ChatViewModel", "发送带图片消息失败", e)
                 _latestStreamingMessageId.value = null
                 _error.value = e.toChatError()
-                _replyingCompanions.value = _replyingCompanions.value - companionId
+                typingStateManager.stopTyping(companionId)
                 onlineStatusManager.setOffline(companionId)
                 _isLoading.value = false
             }
@@ -620,7 +669,7 @@ class ChatViewModel @Inject constructor(
             _error.value = null
 
             // 标记该角色正在回复（持久化状态）
-            _replyingCompanions.value = _replyingCompanions.value + companionId
+            typingStateManager.startTyping(companionId)
             onlineStatusManager.setOnline(companionId)  // 同步到全局状态
 
             Logger.d("ChatViewModel", "=== 开始发送消息 ===")
@@ -784,7 +833,7 @@ class ChatViewModel @Inject constructor(
 
                     // 清空标记并返回
                     _latestStreamingMessageId.value = null
-                    _replyingCompanions.value = _replyingCompanions.value - companionId
+                    typingStateManager.stopTyping(companionId)
                     onlineStatusManager.setOffline(companionId)
                     _isLoading.value = false
                     return@launch
@@ -851,7 +900,7 @@ class ChatViewModel @Inject constructor(
                 }
 
                 // 移除正在回复标记
-                _replyingCompanions.value = _replyingCompanions.value - companionId
+                typingStateManager.stopTyping(companionId)
                 onlineStatusManager.setOffline(companionId)  // 同步到全局状态
 
                 _isLoading.value = false
@@ -859,7 +908,7 @@ class ChatViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 // 协程取消（用户退出页面等），不记录为错误
                 _latestStreamingMessageId.value = null
-                _replyingCompanions.value = _replyingCompanions.value - companionId
+                typingStateManager.stopTyping(companionId)
                 onlineStatusManager.setOffline(companionId)
                 _isLoading.value = false
                 throw e
@@ -877,7 +926,7 @@ class ChatViewModel @Inject constructor(
                 _error.value = e.toChatError()
 
                 // 发生错误时也要移除标记
-                _replyingCompanions.value = _replyingCompanions.value - companionId
+                typingStateManager.stopTyping(companionId)
                 onlineStatusManager.setOffline(companionId)
 
                 _isLoading.value = false
@@ -1275,10 +1324,16 @@ class ChatViewModel @Inject constructor(
     /**
      * 获取收藏的消息
      */
+    @OptIn(ExperimentalCoroutinesApi::class)
     fun getFavoriteMessages(companionId: String): Flow<List<Message>> {
-        val userId = getUserId()
-        return messageRepository.getFavoritedMessages(userId)
-            .map { messages -> messages.filter { it.companionId == companionId } }
+        return userIdFlow.flatMapLatest { userId ->
+            if (userId.isEmpty()) {
+                flowOf(emptyList())
+            } else {
+                messageRepository.getFavoritedMessages(userId)
+                    .map { messages -> messages.filter { it.companionId == companionId } }
+            }
+        }
     }
 
     /**
@@ -1297,9 +1352,15 @@ class ChatViewModel @Inject constructor(
     /**
      * 获取用户的所有标签
      */
+    @OptIn(ExperimentalCoroutinesApi::class)
     fun getUserTags(): Flow<List<com.companion.cc.data.local.entity.TagEntity>> {
-        val userId = getUserId()
-        return tagDao.getTags(userId)
+        return userIdFlow.flatMapLatest { userId ->
+            if (userId.isEmpty()) {
+                flowOf(emptyList())
+            } else {
+                tagDao.getTags(userId)
+            }
+        }
     }
 
     /**
@@ -1377,9 +1438,15 @@ class ChatViewModel @Inject constructor(
     /**
      * 获取带有特定标签的消息
      */
+    @OptIn(ExperimentalCoroutinesApi::class)
     fun getMessagesByTag(tagId: String): Flow<List<com.companion.cc.data.local.entity.MessageEntity>> {
-        val userId = getUserId()
-        return tagDao.getMessagesByTag(userId, tagId)
+        return userIdFlow.flatMapLatest { userId ->
+            if (userId.isEmpty()) {
+                flowOf(emptyList())
+            } else {
+                tagDao.getMessagesByTag(userId, tagId)
+            }
+        }
     }
 
     // ==================== 头像管理 ====================

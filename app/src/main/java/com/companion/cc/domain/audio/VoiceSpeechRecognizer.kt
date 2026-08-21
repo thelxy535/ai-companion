@@ -60,7 +60,16 @@ class VoiceSpeechRecognizer @Inject constructor(
                 return
             }
 
-            // 创建识别器
+            // 清理旧的识别器（如果存在）
+            if (speechRecognizer != null) {
+                try {
+                    speechRecognizer?.destroy()
+                } catch (e: Exception) {
+                    android.util.Log.w("VoiceSpeechRecognizer", "Error destroying old recognizer", e)
+                }
+            }
+
+            // 创建新的识别器
             speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context)
 
             // 设置监听器
@@ -75,12 +84,11 @@ class VoiceSpeechRecognizer @Inject constructor(
                 putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
             }
 
-            // 开始识别
+            // 开始识别（不立即设置 isListening，等待 onReadyForSpeech 回调）
             speechRecognizer?.startListening(intent)
-            _isListening.value = true
             _error.value = null
 
-            android.util.Log.d("VoiceSpeechRecognizer", "Started listening")
+            android.util.Log.d("VoiceSpeechRecognizer", "Starting listening...")
         } catch (e: Exception) {
             android.util.Log.e("VoiceSpeechRecognizer", "Error starting recognition", e)
             _error.value = "启动识别失败: ${e.message}"
@@ -122,6 +130,7 @@ class VoiceSpeechRecognizer @Inject constructor(
         return object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {
                 android.util.Log.d("VoiceSpeechRecognizer", "Ready for speech")
+                _isListening.value = true
             }
 
             override fun onBeginningOfSpeech() {
@@ -144,8 +153,15 @@ class VoiceSpeechRecognizer @Inject constructor(
 
             override fun onError(error: Int) {
                 val errorMessage = getErrorMessage(error)
-                android.util.Log.e("VoiceSpeechRecognizer", "Recognition error: $errorMessage")
-                _error.value = errorMessage
+                android.util.Log.e("VoiceSpeechRecognizer", "Recognition error: $errorMessage (code: $error)")
+
+                // 对于某些错误，不显示给用户（静默失败，可以重试）
+                val isSilentError = error == SpeechRecognizer.ERROR_NO_MATCH ||
+                                   error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
+
+                if (!isSilentError) {
+                    _error.value = errorMessage
+                }
                 _isListening.value = false
             }
 

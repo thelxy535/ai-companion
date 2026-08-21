@@ -97,6 +97,15 @@ sealed class ChatError {
         override val userMessage: String = "发生未知错误：$message",
         override val canRetry: Boolean = true
     ) : ChatError()
+
+    /**
+     * 角色未找到或无权访问
+     */
+    data object CharacterNotFound : ChatError() {
+        override val message: String = "角色不存在或无权访问"
+        override val userMessage: String = "无法加载该角色，可能已被删除或无权访问"
+        override val canRetry: Boolean = false
+    }
 }
 
 /**

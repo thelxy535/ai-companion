@@ -7,6 +7,7 @@ import com.companion.cc.data.local.SettingsManager
 import com.companion.cc.domain.model.VisionAnalysis
 import com.companion.cc.domain.model.VisionError
 import com.companion.cc.domain.vision.VisionProvider
+import com.companion.cc.domain.vision.VisionResponseParser
 import com.companion.cc.util.Logger
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
@@ -102,8 +103,7 @@ class OpenAIVisionProvider @Inject constructor(
                 .execute()
 
             if (!response.isSuccessful) {
-                val errorBody = response.body?.string() ?: "未知错误"
-                Logger.e("OpenAIVisionProvider", "API 错误: ${response.code} - $errorBody")
+                Logger.e("OpenAIVisionProvider", "API 请求失败: ${response.code}")
                 throw VisionError.ApiError("视觉模型调用失败: ${response.code}", response.code.toString())
             }
 
@@ -115,10 +115,8 @@ class OpenAIVisionProvider @Inject constructor(
             val rawAnalysis = visionResponse.choices.firstOrNull()?.message?.content
                 ?: throw VisionError.ApiError("视觉理解结果为空")
 
-            Logger.d("OpenAIVisionProvider", "视觉模型原始输出: $rawAnalysis")
-
             // 6. 解析结构化结果
-            return@withContext parseVisionResponse(rawAnalysis, userText)
+            return@withContext VisionResponseParser.parse(rawAnalysis, confidence = 0.8f)
 
         } catch (e: VisionError) {
             throw e
@@ -160,41 +158,6 @@ ${contextPart}请分析这张图片，并以结构化的方式提取以下信息
 
 如果某项不存在，输出"无"。保持简洁，每项不超过30字。
         """.trimIndent()
-    }
-
-    /**
-     * 解析视觉模型的结构化输出
-     */
-    private fun parseVisionResponse(rawResponse: String, userText: String): VisionAnalysis {
-        val lines = rawResponse.lines().map { it.trim() }
-
-        fun extractValue(key: String): String? {
-            val line = lines.find { it.startsWith(key) }
-            return line?.substringAfter(":")?.trim()?.takeIf { it != "无" && it.isNotBlank() }
-        }
-
-        val mainSubjects = extractValue("主要对象")
-            ?.split("、", ",", "，")
-            ?.map { it.trim() }
-            ?.filter { it.isNotBlank() }
-            ?: emptyList()
-
-        val actions = extractValue("动作")
-            ?.split("、", ",", "，")
-            ?.map { it.trim() }
-            ?.filter { it.isNotBlank() }
-            ?: emptyList()
-
-        return VisionAnalysis(
-            mainSubjects = mainSubjects,
-            environment = extractValue("环境"),
-            actions = actions,
-            textContent = extractValue("文字"),
-            mood = extractValue("氛围"),
-            contextualMeaning = extractValue("语境理解"),
-            confidence = 0.8f,  // GPT-4V 通常可信度较高
-            rawResponse = rawResponse
-        )
     }
 
     /**

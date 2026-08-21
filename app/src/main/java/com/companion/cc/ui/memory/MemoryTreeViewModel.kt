@@ -7,6 +7,7 @@ import com.companion.cc.data.local.dao.StatsDao
 import com.companion.cc.domain.model.Message
 import com.companion.cc.domain.model.MessageRole
 import com.companion.cc.domain.model.MessagesByDate
+import com.companion.cc.domain.identity.CurrentUserProvider
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -17,7 +18,8 @@ import javax.inject.Inject
 @HiltViewModel
 class MemoryTreeViewModel @Inject constructor(
     private val statsDao: StatsDao,
-    private val settingsManager: SettingsManager
+    private val settingsManager: SettingsManager,
+    private val currentUserProvider: CurrentUserProvider
 ) : ViewModel() {
 
     private val _messagesByDate = MutableStateFlow<List<MessagesByDate>>(emptyList())
@@ -42,7 +44,7 @@ class MemoryTreeViewModel @Inject constructor(
             android.util.Log.d("MemoryTreeViewModel", "开始加载消息...")
 
             try {
-                val userId = settingsManager.userIdFlow.first()
+                val userId = currentUserProvider.requireUserId()
                 android.util.Log.d("MemoryTreeViewModel", "用户ID: $userId")
 
                 // 获取统计信息

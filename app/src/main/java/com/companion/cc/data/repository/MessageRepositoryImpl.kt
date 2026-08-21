@@ -37,6 +37,9 @@ class MessageRepositoryImpl @Inject constructor(
         return messageDao.getMessageCount(userId)
     }
 
+    override fun observeMessageCount(userId: String): Flow<Int> =
+        messageDao.observeMessageCount(userId)
+
     override suspend fun deleteAllMessages(userId: String) {
         messageDao.deleteAllMessages(userId)
     }
@@ -105,5 +108,10 @@ class MessageRepositoryImpl @Inject constructor(
         return messageDao.getFavoritedMessages(userId).map { entities ->
             entities.map { it.toDomain() }
         }
+    }
+
+    override fun observeLatestMessage(userId: String, companionId: String): Flow<Message?> {
+        return messageDao.observeLatestMessage(userId, companionId)
+            .map { entity -> entity?.toDomain() }
     }
 }

@@ -3,25 +3,36 @@ package com.companion.cc.ui.stats
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.companion.cc.data.local.dao.VectorMemoryDao
-import com.companion.cc.domain.manager.MemoryLayerManager
+import com.companion.cc.data.local.dao.MemoryDao
+import com.companion.cc.data.local.dao.MemoryNodeDao
 import com.companion.cc.domain.model.EmotionalState
 import com.companion.cc.domain.model.Mood
 import com.companion.cc.domain.repository.MessageRepository
+import com.companion.cc.data.local.SettingsManager
 import com.companion.cc.ui.chat.ConversationStats
+import com.companion.cc.domain.identity.CurrentUserProvider
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
 class StatsViewModel @Inject constructor(
     private val messageRepository: MessageRepository,
-    private val memoryLayerManager: MemoryLayerManager,
-    private val vectorMemoryDao: VectorMemoryDao
+    private val memoryDao: MemoryDao,
+    private val memoryNodeDao: MemoryNodeDao,
+    private val vectorMemoryDao: VectorMemoryDao,
+    private val settingsManager: SettingsManager,
+    private val currentUserProvider: CurrentUserProvider
 ) : ViewModel() {
+
+    private var statsJob: Job? = null
 
     private val _stats = MutableStateFlow(ConversationStats())
     val stats: StateFlow<ConversationStats> = _stats.asStateFlow()
@@ -36,14 +47,21 @@ class StatsViewModel @Inject constructor(
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
     fun loadStats(companionId: String) {
-        viewModelScope.launch {
+        statsJob?.cancel()
+        statsJob = viewModelScope.launch {
             _isLoading.value = true
             try {
-                val messages = messageRepository.getMessages(
-                    userId = "default",
-                    companionId = companionId,
-                    limit = 1000
-                ).first()
+                val userId = currentUserProvider.requireUserId()
+                combine(
+                    messageRepository.getMessages(userId, companionId, limit = 1000),
+                    memoryDao.observeMemoryCount(userId),
+                    memoryNodeDao.observeFiltered("companion:$companionId"),
+                    vectorMemoryDao.observeCount(userId, companionId)
+                ) { messages, legacyCount, nodes, vectorCount ->
+                    StatsSnapshot(messages, legacyCount + nodes.size, vectorCount)
+                }.collectLatest { snapshot ->
+                val messages = snapshot.messages
+                _isLoading.value = false
 
                 // 计算统计数据
                 val userMessages = messages.count { it.role == com.companion.cc.domain.model.MessageRole.USER }
@@ -100,34 +118,19 @@ class StatsViewModel @Inject constructor(
                 })
 
                 // 获取记忆统计
-                val memoryContext = memoryLayerManager.getMemoryContext(
-                    userId = "default",
-                    companionId = companionId,
-                    currentMessage = ""
-                )
-                val totalMemory = memoryContext.shortTerm.size +
-                        memoryContext.midTerm.size +
-                        memoryContext.longTerm.size +
-                        memoryContext.permanent.size
-                _totalMemoryCount.value = totalMemory
+                _totalMemoryCount.value = snapshot.memoryCount
 
                 // 获取向量记忆数量
-                val vectorMemoryCount = try {
-                    vectorMemoryDao.getAllMemories("default", companionId).size
-                } catch (e: Exception) {
-                    android.util.Log.e("StatsViewModel", "获取向量记忆失败", e)
-                    0
-                }
-
                 _stats.value = ConversationStats(
                     totalMessages = messages.size,
                     conversationRounds = rounds,
                     currentTopics = topics,
                     topTraits = topTraits,
                     sessionStartTime = messages.firstOrNull()?.timestamp ?: System.currentTimeMillis(),
-                    vectorMemoryCount = vectorMemoryCount,
+                    vectorMemoryCount = snapshot.vectorMemoryCount,
                     emotionalScore = emotionalScore
                 )
+                    }
             } catch (e: Exception) {
                 android.util.Log.e("StatsViewModel", "加载统计失败", e)
             } finally {
@@ -135,6 +138,12 @@ class StatsViewModel @Inject constructor(
             }
         }
     }
+
+    private data class StatsSnapshot(
+        val messages: List<com.companion.cc.domain.model.Message>,
+        val memoryCount: Int,
+        val vectorMemoryCount: Int
+    )
 
     /**
      * 从用户消息中提取主要特质关键词

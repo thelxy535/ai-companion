@@ -30,6 +30,8 @@ import com.companion.cc.data.local.entity.MemoryEvidenceEntity
 import com.companion.cc.data.local.entity.MemoryNodeEntity
 import com.companion.cc.data.local.entity.MemoryVersionEntity
 import com.companion.cc.data.local.repository.MemoryRepository
+import com.companion.cc.ui.components.UtilityDivider
+import com.companion.cc.ui.components.UtilitySection
 import com.companion.cc.ui.theme.GlassSurface
 import dagger.hilt.android.lifecycle.HiltViewModel
 import androidx.lifecycle.ViewModel
@@ -75,18 +77,39 @@ fun MemoryDetailScreen(
         } else {
             LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 item {
-                    GlassSurface(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(16.dp)) {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(node.title, style = androidx.compose.material3.MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                            Text(node.content)
-                            Text("${node.kind} · ${node.status} · 版本 ${node.currentVersion}")
+                    UtilitySection(title = node.title) {
+                        Text(node.content)
+                        UtilityDivider()
+                        Text(
+                            "${node.kind} · ${node.status} · 版本 ${node.currentVersion}",
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                item {
+                    UtilitySection(title = "来源证据") {
+                        if (state.evidence.isEmpty()) {
+                            Text("暂无来源证据", color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else {
+                            state.evidence.forEachIndexed { index, evidence ->
+                                if (index > 0) UtilityDivider()
+                                Text("${evidence.evidenceRole} · ${evidence.summarySnapshot}")
+                            }
                         }
                     }
                 }
-                item { Text("来源证据", fontWeight = FontWeight.SemiBold) }
-                items(state.evidence) { evidence -> Text("${evidence.evidenceRole} · ${evidence.summarySnapshot}") }
-                item { Text("历史版本", fontWeight = FontWeight.SemiBold) }
-                items(state.versions) { version -> Text("v${version.version} · ${version.changeReason} · ${version.content}") }
+                item {
+                    UtilitySection(title = "历史版本") {
+                        if (state.versions.isEmpty()) {
+                            Text("暂无历史版本", color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else {
+                            state.versions.forEachIndexed { index, version ->
+                                if (index > 0) UtilityDivider()
+                                Text("v${version.version} · ${version.changeReason} · ${version.content}")
+                            }
+                        }
+                    }
+                }
             }
         }
     }

@@ -11,7 +11,6 @@ import androidx.compose.material.icons.filled.BrokenImage
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -26,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
+import com.companion.cc.ui.theme.CompactGlassSurface
 
 /**
  * 通用头像组件
@@ -55,7 +55,7 @@ fun Avatar(
             .clip(CircleShape)
     }
 
-    Surface(
+    CompactGlassSurface(
         modifier = modifier,
         shape = CircleShape,
         color = backgroundColor ?: MaterialTheme.colorScheme.primaryContainer

@@ -47,7 +47,10 @@ import com.companion.cc.ui.components.TagManagementDialog
 import com.companion.cc.ui.components.CompanionAvatar
 import com.companion.cc.ui.components.UserAvatar
 import com.companion.cc.ui.settings.AvatarSettingsDialog
-import com.companion.cc.ui.theme.FunctionalColors
+import com.companion.cc.ui.theme.CompactGlassSurface
+import com.companion.cc.ui.theme.GlassBottomDock
+import com.companion.cc.ui.theme.GlassSurface
+import com.companion.cc.ui.theme.LocalVisualTheme
 import com.companion.cc.util.NetworkState
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -65,7 +68,6 @@ import java.util.*
 @Composable
 fun NaturalChatScreen(
     companionId: String,
-    isCustomCharacter: Boolean = false,
     onNavigateBack: () -> Unit,
     onNavigateToMemory: () -> Unit = {},
     onNavigateToStats: () -> Unit = {},
@@ -75,9 +77,9 @@ fun NaturalChatScreen(
     onNavigateToCompanionDetail: () -> Unit = {},
     viewModel: ChatViewModel = hiltViewModel()
 ) {
-    // 初始化时传递角色信息到 ViewModel
-    LaunchedEffect(companionId, isCustomCharacter) {
-        viewModel.setCharacter(companionId, isCustomCharacter)
+    // 初始化时传递角色信息到 ViewModel（单参数调用）
+    LaunchedEffect(companionId) {
+        viewModel.setCharacter(companionId)
     }
 
     val messages by viewModel.messages.collectAsState()
@@ -204,7 +206,6 @@ fun NaturalChatScreen(
                 customCharacterName = customCharacterName,
                 onNavigateBack = onNavigateBack,
                 onMenuClick = { showMenu = true },
-                onStatsClick = { showStatsPanel = !showStatsPanel },
                 onTimelineClick = {
                     scope.launch {
                         timelineData = viewModel.getEmotionalTimeline(companionId)
@@ -219,7 +220,11 @@ fun NaturalChatScreen(
             )
         },
         bottomBar = {
-            Column {
+            Column(
+                modifier = Modifier
+                    .navigationBarsPadding()
+                    .imePadding()
+            ) {
                 // 语音输入指示器
                 if (isListening) {
                     VoiceListeningIndicator()
@@ -270,7 +275,7 @@ fun NaturalChatScreen(
             }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        containerColor = MaterialTheme.colorScheme.background
+        containerColor = Color.Transparent
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize()) {
             Column(modifier = Modifier.fillMaxSize()) {
@@ -280,7 +285,7 @@ fun NaturalChatScreen(
                     enter = slideInVertically() + fadeIn(),
                     exit = slideOutVertically() + fadeOut()
                 ) {
-                    Surface(
+                    CompactGlassSurface(
                         modifier = Modifier.fillMaxWidth(),
                         color = MaterialTheme.colorScheme.errorContainer,
                         tonalElevation = 2.dp
@@ -554,7 +559,6 @@ private fun ChatTopBar(
     customCharacterName: String? = null,
     onNavigateBack: () -> Unit,
     onMenuClick: () -> Unit,
-    onStatsClick: () -> Unit = {},
     onTimelineClick: () -> Unit = {},
     onAvatarLongPress: () -> Unit = {},
     isLoading: Boolean = false,
@@ -562,7 +566,14 @@ private fun ChatTopBar(
     isOffline: Boolean = false,
     messages: List<Message> = emptyList()
 ) {
-    TopAppBar(
+    val visualTheme = LocalVisualTheme.current
+    GlassSurface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp),
+        contentPadding = PaddingValues(0.dp),
+        useStrongFill = true
+    ) {
+        TopAppBar(
         title = {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -591,22 +602,22 @@ private fun ChatTopBar(
                         when {
                             // 1. AI 正在思考（正在生成回复）
                             isLoading -> {
-                                StatusDot(Color(0xFFFFB74D))
+                                StatusDot(visualTheme.tokens.status.warning)
                                 StatusText("正在思考...")
                             }
                             // 2. 有未回复的用户消息
                             shouldShowTyping -> {
-                                StatusDot(Color(0xFF66BB6A))
+                                StatusDot(visualTheme.tokens.status.success)
                                 StatusText("正在回复...")
                             }
                             // 3. 网络离线
                             isOffline -> {
-                                StatusDot(Color(0xFF9E9E9E))
+                                StatusDot(visualTheme.tokens.contentMuted)
                                 StatusText("离线模式")
                             }
                             // 4. 空闲：显示最后活跃时间
                             else -> {
-                                StatusDot(Color(0xFF90CAF9))
+                                StatusDot(visualTheme.tokens.status.info)
                                 val lastMessage = messages.lastOrNull()
                                 val statusText = if (lastMessage != null) {
                                     val diff = System.currentTimeMillis() - lastMessage.timestamp
@@ -651,9 +662,10 @@ private fun ChatTopBar(
             }
         },
         colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = MaterialTheme.colorScheme.surface
+            containerColor = Color.Transparent
         )
     )
+    }
 }
 
 @Composable
@@ -687,6 +699,7 @@ private fun MessageBubble(
     shouldStream: Boolean = false
 ) {
     val isUser = message.role == MessageRole.USER
+    val visualTheme = LocalVisualTheme.current
 
     // 流式输出效果：仅正在流式传输的 AI 消息播放逐字动画，历史消息直接显示
     val displayText = if (!isUser) {
@@ -726,12 +739,9 @@ private fun MessageBubble(
                     bottomStart = if (isUser) 16.dp else 4.dp,
                     bottomEnd = if (isUser) 4.dp else 16.dp
                 ),
-                color = if (isUser)
-                    MaterialTheme.colorScheme.primary
-                else
-                    MaterialTheme.colorScheme.surfaceVariant,
-                tonalElevation = 1.dp,  // 添加轻微阴影
-                shadowElevation = 2.dp,  // 添加阴影深度
+                color = if (isUser) {
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.94f)
+                } else MaterialTheme.colorScheme.surface,
                 modifier = Modifier.pointerInput(Unit) {
                     detectTapGestures(onLongPress = { onLongPress() })
                 }
@@ -742,10 +752,11 @@ private fun MessageBubble(
                 ) {
                     // 图片附件（用户消息且有图片时显示）
                     if (isUser && !message.imageUrl.isNullOrBlank()) {
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            modifier = Modifier.fillMaxWidth()
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant)
                         ) {
                             Column(
                                 modifier = Modifier.padding(8.dp),
@@ -823,7 +834,7 @@ private fun MessageBubble(
                             Icon(
                                 imageVector = Icons.Default.Star,
                                 contentDescription = "重要",
-                                tint = FunctionalColors.important,
+                                tint = visualTheme.tokens.status.importance,
                                 modifier = Modifier.size(16.dp)
                             )
                             Text(
@@ -870,7 +881,7 @@ private fun TypingIndicator(companionEmoji: String) {
             .padding(horizontal = 16.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.Start
     ) {
-        Surface(
+        CompactGlassSurface(
             shape = CircleShape,
             color = MaterialTheme.colorScheme.primaryContainer,
             modifier = Modifier
@@ -882,7 +893,7 @@ private fun TypingIndicator(companionEmoji: String) {
             }
         }
 
-        Surface(
+        CompactGlassSurface(
             shape = RoundedCornerShape(16.dp, 16.dp, 16.dp, 4.dp),
             color = MaterialTheme.colorScheme.surfaceVariant
         ) {
@@ -938,10 +949,7 @@ private fun ChatInputBar(
     selectedImageUri: Uri? = null,
     onClearImage: () -> Unit = {}
 ) {
-    Surface(
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 3.dp
-    ) {
+    GlassBottomDock {
         Column(
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -1067,7 +1075,7 @@ private fun MessageActionsMenu(
                     Icon(
                         imageVector = if (message.isFavorited) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                         contentDescription = null,
-                        tint = if (message.isFavorited) Color.Red else Color.Unspecified,
+                        tint = if (message.isFavorited) MaterialTheme.colorScheme.error else Color.Unspecified,
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
@@ -1084,7 +1092,7 @@ private fun MessageActionsMenu(
                         Icon(
                             imageVector = Icons.Default.Star,
                             contentDescription = null,
-                            tint = Color(0xFFFFD700),
+                            tint = LocalVisualTheme.current.tokens.status.importance,
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
@@ -1161,25 +1169,23 @@ private fun FunctionMenu(
     onSettingsClick: () -> Unit,
     onFavoritesClick: () -> Unit
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("功能") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                FunctionMenuItem(Icons.Default.AccountTree, "记忆树", onMemoryClick)
-                FunctionMenuItem(Icons.Default.Favorite, "收藏夹", onFavoritesClick)
-                FunctionMenuItem(Icons.Default.BarChart, "数据统计", onStatsClick)
-                FunctionMenuItem(Icons.Default.Storage, "数据管理", onDataClick)
-                FunctionMenuItem(Icons.Default.Settings, "设置", onSettingsClick)
-            }
-        },
-        confirmButton = {},
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("取消")
-            }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .wrapContentSize(Alignment.TopEnd)
+            .padding(top = 56.dp, end = 8.dp)
+    ) {
+        DropdownMenu(
+            expanded = true,
+            onDismissRequest = onDismiss
+        ) {
+            FunctionMenuItem(Icons.Default.AccountTree, "记忆树", onMemoryClick)
+            FunctionMenuItem(Icons.Default.Favorite, "收藏夹", onFavoritesClick)
+            FunctionMenuItem(Icons.Default.BarChart, "数据统计", onStatsClick)
+            FunctionMenuItem(Icons.Default.Storage, "数据管理", onDataClick)
+            FunctionMenuItem(Icons.Default.Settings, "设置", onSettingsClick)
         }
-    )
+    }
 }
 
 @Composable
@@ -1263,11 +1269,12 @@ private fun ImagePreview(
     imageUri: Uri,
     onClear: () -> Unit
 ) {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant,
+    CompactGlassSurface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(8.dp)
+            .padding(8.dp),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant
     ) {
         Row(
             modifier = Modifier
@@ -1281,20 +1288,18 @@ private fun ImagePreview(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.weight(1f)
             ) {
-                // 图片缩略图（使用 coil 或者简单的占位图标）
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                Box(
                     modifier = Modifier.size(56.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Default.Image,
-                            contentDescription = "图片预览",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(32.dp)
-                        )
-                    }
+                    AsyncImage(
+                        model = imageUri,
+                        contentDescription = "图片预览",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
                 }
 
                 Column {

@@ -19,6 +19,12 @@ interface CustomCharacterDao {
     @Query("SELECT * FROM custom_characters WHERE id = :characterId LIMIT 1")
     fun getCharacterByIdFlow(characterId: String): Flow<CustomCharacterEntity?>
 
+    @Query("SELECT * FROM custom_characters WHERE id = :characterId AND userId = :userId LIMIT 1")
+    suspend fun getCharacterByIdForUser(characterId: String, userId: String): CustomCharacterEntity?
+
+    @Query("SELECT * FROM custom_characters WHERE id = :characterId AND userId = :userId LIMIT 1")
+    fun getCharacterByIdFlowForUser(characterId: String, userId: String): Flow<CustomCharacterEntity?>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(character: CustomCharacterEntity)
 
@@ -33,4 +39,7 @@ interface CustomCharacterDao {
 
     @Query("SELECT COUNT(*) FROM custom_characters WHERE userId = :userId")
     suspend fun getCharacterCount(userId: String): Int
+
+    @Query("UPDATE custom_characters SET userId = :targetUserId WHERE userId = :sourceUserId")
+    suspend fun reassignCharacters(sourceUserId: String, targetUserId: String): Int
 }

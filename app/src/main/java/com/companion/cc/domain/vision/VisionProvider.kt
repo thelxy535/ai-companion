@@ -41,6 +41,11 @@ interface VisionProvider {
     val providerName: String
 
     /**
+     * 当前结果缓存所属的服务标识。路由 Provider 应覆盖此值，避免切换服务后复用另一个服务的结果。
+     */
+    suspend fun cacheIdentity(): String = providerName
+
+    /**
      * 支持的最大图片大小（字节）
      */
     val maxImageSize: Long

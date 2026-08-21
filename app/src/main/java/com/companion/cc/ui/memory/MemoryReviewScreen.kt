@@ -18,6 +18,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Divider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -72,19 +74,20 @@ private fun ReviewList(
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(padding),
         contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         items(reviews, key = { it.id }) { review ->
-            GlassSurface(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(16.dp)) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Surface(modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surface) {
+                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(review.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Text(review.content, style = MaterialTheme.typography.bodyMedium)
-                    Text("${review.kind} · 可信度 ${(review.confidence * 100).toInt()}% · 来源 ${review.sourceIdsJson}", style = MaterialTheme.typography.labelSmall)
+                    Text("${review.kind} · 可信度 ${(review.confidence * 100).toInt()}%", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                         IconButton(onClick = { viewModel.defer(review) }) { Icon(Icons.Default.Schedule, "稍后审核") }
                         IconButton(onClick = { viewModel.reject(review) }) { Icon(Icons.Default.Close, "拒绝") }
                         IconButton(onClick = { viewModel.accept(review) }) { Icon(Icons.Default.Check, "接受") }
                     }
+                    Divider(color = MaterialTheme.colorScheme.outlineVariant)
                 }
             }
         }

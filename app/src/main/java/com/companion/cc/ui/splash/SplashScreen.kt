@@ -11,10 +11,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.companion.cc.ui.theme.GlassEffectTier
+import com.companion.cc.ui.theme.LocalVisualTheme
 import kotlinx.coroutines.delay
 
 /**
@@ -51,11 +52,10 @@ fun SplashScreen(
         onNavigateToHome()
     }
 
-    // 渐变背景 - 温暖、亲密感
+    val visualTheme = LocalVisualTheme.current
     val backgroundColors = listOf(
-        Color(0xFFFFF5F7),  // 柔和粉白
-        Color(0xFFFFF0F3),  // 温暖粉
-        Color(0xFFFCE4EC)   // 淡粉色
+        visualTheme.tokens.backdrop.baseStart,
+        visualTheme.tokens.backdrop.baseEnd
     )
 
     Box(
@@ -68,7 +68,8 @@ fun SplashScreen(
     ) {
         // 品牌符号动画
         AnimatedBrandIcon(
-            phase = animationPhase
+            phase = animationPhase,
+        allowDecorativeMotion = visualTheme.effectTier != GlassEffectTier.STEADY
         )
     }
 }
@@ -77,7 +78,10 @@ fun SplashScreen(
  * 品牌符号动画
  */
 @Composable
-private fun AnimatedBrandIcon(phase: Int) {
+private fun AnimatedBrandIcon(
+    phase: Int,
+    allowDecorativeMotion: Boolean
+) {
     // 缩放动画
     val scale by animateFloatAsState(
         targetValue = when (phase) {
@@ -107,16 +111,19 @@ private fun AnimatedBrandIcon(phase: Int) {
         label = "icon_alpha"
     )
 
-    // 呼吸动画（阶段2）
-    val breatheScale by rememberInfiniteTransition(label = "breathe").animateFloat(
-        initialValue = 1f,
-        targetValue = 1.05f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "breathe_scale"
-    )
+    val breatheScale = if (allowDecorativeMotion) {
+        rememberInfiniteTransition(label = "breathe").animateFloat(
+            initialValue = 1f,
+            targetValue = 1.05f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(1000, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "breathe_scale"
+        ).value
+    } else {
+        1f
+    }
 
     Box(
         modifier = Modifier
