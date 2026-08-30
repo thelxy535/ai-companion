@@ -3,8 +3,10 @@ package com.companion.cc.ui.memory
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.companion.cc.data.local.entity.MemoryReviewEntity
+import com.companion.cc.domain.identity.CurrentUserProvider
 import com.companion.cc.data.local.repository.MemoryRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -20,25 +22,41 @@ sealed interface MemoryReviewState {
 
 @HiltViewModel
 class MemoryReviewViewModel @Inject constructor(
-    private val repository: MemoryRepository
+    private val repository: MemoryRepository,
+    private val currentUserProvider: CurrentUserProvider
 ) : ViewModel() {
     private val _state = MutableStateFlow<MemoryReviewState>(MemoryReviewState.Loading)
     val state: StateFlow<MemoryReviewState> = _state.asStateFlow()
-    private var scopeKey: String = scopeFor("xiaocan")
-
-    init { observe() }
+    private var scopeKey: String? = null
+    private var observeJob: Job? = null
 
     fun setCompanion(companionId: String) {
-        val next = scopeFor(companionId)
-        if (next != scopeKey) {
-            scopeKey = next
-            observe()
+        viewModelScope.launch {
+            val userId = runCatching { currentUserProvider.requireUserId() }
+                .getOrElse { error ->
+                    _state.value = MemoryReviewState.Error(emptyList(), error.message ?: "无法识别当前用户")
+                    return@launch
+                }
+            val next = scopeFor(userId, companionId)
+            if (next != scopeKey) {
+                scopeKey = next
+                observe()
+            }
         }
     }
 
     fun accept(review: MemoryReviewEntity, subjectRole: String = "user", subjectKey: String = "user") {
         viewModelScope.launch {
-            repository.acceptReview(review.id, subjectRole, subjectKey)
+            val scope = scopeKey ?: run {
+                _state.value = MemoryReviewState.Error(currentItems(), "未选择角色")
+                return@launch
+            }
+            repository.acceptReview(
+                scopeKey = scope,
+                reviewId = review.id,
+                subjectRole = subjectRole,
+                subjectKey = subjectKey
+            )
                 .onFailure { error -> _state.value = MemoryReviewState.Error(currentItems(), error.message ?: "无法接受记忆") }
         }
     }
@@ -53,14 +71,25 @@ class MemoryReviewViewModel @Inject constructor(
 
     private fun resolve(review: MemoryReviewEntity, status: String, note: String) {
         viewModelScope.launch {
-            repository.resolveReview(review.id, status, note)
+            val scope = scopeKey ?: run {
+                _state.value = MemoryReviewState.Error(currentItems(), "未选择角色")
+                return@launch
+            }
+            repository.resolveReview(
+                scopeKey = scope,
+                reviewId = review.id,
+                status = status,
+                note = note
+            )
                 .onFailure { error -> _state.value = MemoryReviewState.Error(currentItems(), error.message ?: "无法更新审核状态") }
         }
     }
 
     private fun observe() {
-        viewModelScope.launch {
-            repository.observePendingReviews(scopeKey)
+        val scope = scopeKey ?: return
+        observeJob?.cancel()
+        observeJob = viewModelScope.launch {
+            repository.observePendingReviews(scope)
                 .catch { error -> _state.value = MemoryReviewState.Error(currentItems(), error.message ?: "无法加载审核列表") }
                 .collect { reviews -> _state.value = MemoryReviewState.Content(reviews) }
         }
@@ -73,6 +102,7 @@ class MemoryReviewViewModel @Inject constructor(
     }
 
     companion object {
-        fun scopeFor(companionId: String): String = "companion:${companionId.trim()}"
+        fun scopeFor(userId: String, companionId: String): String =
+            com.companion.cc.domain.memory.MemoryScopeKey.forCharacter(userId, companionId)
     }
 }

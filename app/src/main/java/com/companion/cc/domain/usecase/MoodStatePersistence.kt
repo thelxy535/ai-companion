@@ -40,6 +40,9 @@ interface MoodStateDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdate(state: MoodStateEntity)
 
+    @Query("DELETE FROM mood_states WHERE userId = :userId AND companionId = :companionId")
+    suspend fun deleteState(userId: String, companionId: String): Int
+
     @Query("SELECT * FROM mood_states WHERE id = :id")
     suspend fun getState(id: String): MoodStateEntity?
 }

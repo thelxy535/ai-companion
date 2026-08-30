@@ -1,6 +1,9 @@
 package com.companion.cc.ui.character
 
-import androidx.compose.foundation.background
+import com.companion.cc.ui.designsystem.auroraScreenBackground
+import com.companion.cc.ui.theme.LocalVisualTheme
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -8,14 +11,20 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.companion.cc.ui.theme.GlassSurface
+import com.companion.cc.ui.theme.TactileGesture
+import com.companion.cc.ui.theme.rememberTactileAction
+import androidx.compose.foundation.layout.padding
 
 /**
  * 自定义步骤枚举
@@ -37,19 +46,42 @@ fun CharacterCustomizationScreen(
     onNavigateBack: () -> Unit,
     viewModel: CharacterCustomizationViewModel = hiltViewModel()
 ) {
-    var currentStep by remember { mutableStateOf(CustomizationStep.BASIC_INFO) }
+    var currentStep by rememberSaveable { mutableStateOf(CustomizationStep.BASIC_INFO) }
 
     // 实时获取表单字段以验证
     val name by viewModel.name.collectAsState()
     val description by viewModel.description.collectAsState()
     val backstory by viewModel.backstory.collectAsState()
     val saveState by viewModel.saveState.collectAsState()
+    val isSaving = saveState is CharacterSaveState.Saving
+    val navigationEnabled = canNavigateWhileSaving(isSaving)
+    var showDiscardDialog by rememberSaveable { mutableStateOf(false) }
 
     val isFormValid = name.isNotBlank() && description.isNotBlank() && backstory.isNotBlank()
+    val requestBack = {
+        if (shouldConfirmDiscard(viewModel.hasUnsavedChanges(), isSaving)) {
+            showDiscardDialog = true
+        } else {
+            onNavigateBack()
+        }
+    }
+    val goBack = rememberTactileAction(enabled = navigationEnabled) { requestBack() }
+    val previousStep = rememberTactileAction(enabled = navigationEnabled) {
+        currentStep = CustomizationStep.values()[currentStep.ordinal - 1]
+    }
+    val nextStep = rememberTactileAction(enabled = !isSaving) {
+        if (currentStep == CustomizationStep.EXAMPLES) {
+            viewModel.saveCharacter()
+        } else {
+            currentStep = CustomizationStep.values()[currentStep.ordinal + 1]
+        }
+    }
 
     LaunchedEffect(characterId) {
         if (characterId != null) {
             viewModel.loadCharacterForEdit(characterId)
+        } else {
+            viewModel.startNewCharacter()
         }
     }
 
@@ -61,17 +93,32 @@ fun CharacterCustomizationScreen(
         }
     }
 
+    BackHandler(enabled = navigationEnabled) {
+        requestBack()
+    }
+
+    if (showDiscardDialog) {
+        AlertDialog(
+            onDismissRequest = { showDiscardDialog = false },
+            title = { Text("放弃未保存修改？") },
+            text = { Text("离开后，当前修改将不会保存。") },
+            confirmButton = {
+                TextButton(onClick = onNavigateBack) { Text("放弃") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDiscardDialog = false }) { Text("继续编辑") }
+            }
+        )
+    }
+
     Scaffold(
+        modifier = Modifier.auroraScreenBackground(LocalVisualTheme.current.tokens.backdrop.isDark),
         topBar = {
-            GlassSurface(
-                modifier = Modifier.fillMaxWidth(),
-                contentPadding = PaddingValues(0.dp),
-                useStrongFill = true
-            ) {
-                TopAppBar(
+            TopAppBar(
+                modifier = Modifier.padding(top = 44.dp),
                 title = { Text(if (characterId != null) "编辑角色" else "创建角色") },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
+                    IconButton(onClick = goBack, enabled = navigationEnabled) {
                         Icon(Icons.Default.ArrowBack, "返回")
                     }
                 },
@@ -79,7 +126,6 @@ fun CharacterCustomizationScreen(
                     containerColor = Color.Transparent
                 )
             )
-            }
         },
         containerColor = Color.Transparent
     ) { padding ->
@@ -92,6 +138,9 @@ fun CharacterCustomizationScreen(
             StepIndicator(
                 steps = CustomizationStep.values().map { it.title },
                 currentStep = currentStep.ordinal,
+                onStepClick = { index ->
+                    currentStep = CustomizationStep.values()[index]
+                },
                 modifier = Modifier.padding(16.dp)
             )
 
@@ -111,21 +160,30 @@ fun CharacterCustomizationScreen(
                 }
             }
 
+            if (saveState is CharacterSaveState.Failure) {
+                Text(
+                    text = (saveState as CharacterSaveState.Failure).message,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+            }
+
             Divider()
 
             // 导航按钮
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
+                    .padding(16.dp)
+                    .imePadding(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 // 上一步按钮
                 if (currentStep.ordinal > 0) {
                     OutlinedButton(
-                        onClick = {
-                            currentStep = CustomizationStep.values()[currentStep.ordinal - 1]
-                        }
+                        onClick = previousStep,
+                        enabled = navigationEnabled
                     ) {
                         Icon(Icons.Default.ArrowBack, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
@@ -137,13 +195,7 @@ fun CharacterCustomizationScreen(
 
                 // 下一步/完成按钮
                 Button(
-                    onClick = {
-                        if (currentStep == CustomizationStep.EXAMPLES) {
-                            viewModel.saveCharacter()
-                        } else {
-                            currentStep = CustomizationStep.values()[currentStep.ordinal + 1]
-                        }
-                    },
+                    onClick = nextStep,
                     enabled = when (currentStep) {
                         CustomizationStep.BASIC_INFO -> isFormValid && saveState !is CharacterSaveState.Saving
                         CustomizationStep.EXAMPLES -> saveState !is CharacterSaveState.Saving
@@ -176,70 +228,87 @@ fun CharacterCustomizationScreen(
 fun StepIndicator(
     steps: List<String>,
     currentStep: Int,
+    onStepClick: (Int) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Row(
         modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.Top
     ) {
         steps.forEachIndexed { index, title ->
-            // 步骤圆圈
+            val status = when {
+                index < currentStep -> "已完成"
+                index == currentStep -> "当前步骤"
+                else -> "未开始"
+            }
+            val foreground = when {
+                index <= currentStep -> MaterialTheme.colorScheme.primary
+                else -> MaterialTheme.colorScheme.onSurfaceVariant
+            }
+            val stepModifier = Modifier
+                .weight(1f)
+                .semantics {
+                    contentDescription = "$title，第 ${index + 1} 步，共 ${steps.size} 步，$status"
+                    if (index <= currentStep) role = Role.Button
+                }
+                .then(
+                    if (index <= currentStep) {
+                        Modifier.clickable { onStepClick(index) }
+                    } else {
+                        Modifier
+                    }
+                )
+                .padding(vertical = 4.dp)
+
             Column(
+                modifier = stepModifier,
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.weight(1f)
+                verticalArrangement = Arrangement.spacedBy(5.dp)
             ) {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(MaterialTheme.shapes.small)
-                        .background(
-                            when {
-                                index < currentStep -> MaterialTheme.colorScheme.primary
-                                index == currentStep -> MaterialTheme.colorScheme.primaryContainer
-                                else -> MaterialTheme.colorScheme.surfaceVariant
-                            }
-                        )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     if (index < currentStep) {
                         Icon(
                             Icons.Default.Check,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onPrimary
+                            modifier = Modifier.size(16.dp),
+                            tint = foreground
                         )
                     } else {
                         Text(
                             text = "${index + 1}",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = when {
-                                index == currentStep -> MaterialTheme.colorScheme.onPrimaryContainer
-                                else -> MaterialTheme.colorScheme.onSurfaceVariant
+                            style = MaterialTheme.typography.labelMedium,
+                            color = foreground,
+                            fontWeight = if (index == currentStep) {
+                                FontWeight.Bold
+                            } else {
+                                FontWeight.Medium
                             }
                         )
                     }
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = foreground,
+                        fontWeight = if (index == currentStep) {
+                            FontWeight.SemiBold
+                        } else {
+                            FontWeight.Normal
+                        },
+                        maxLines = 1
+                    )
                 }
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.labelSmall,
+
+                Divider(
+                    modifier = Modifier.width(28.dp),
+                    thickness = if (index == currentStep) 2.dp else 1.dp,
                     color = when {
                         index == currentStep -> MaterialTheme.colorScheme.primary
-                        else -> MaterialTheme.colorScheme.onSurfaceVariant
-                    }
-                )
-            }
-
-            // 连接线
-            if (index < steps.size - 1) {
-                Divider(
-                    modifier = Modifier
-                        .width(24.dp)
-                        .padding(bottom = 32.dp),
-                    color = if (index < currentStep) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.surfaceVariant
+                        index < currentStep -> MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
+                        else -> MaterialTheme.colorScheme.outlineVariant
                     }
                 )
             }
@@ -437,7 +506,11 @@ fun PersonalitySlider(
         Slider(
             value = value,
             onValueChange = onValueChange,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .semantics {
+                    contentDescription = "$label：${(value * 100).toInt()}%"
+                }
         )
     }
 }

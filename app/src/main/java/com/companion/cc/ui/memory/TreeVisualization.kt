@@ -1,17 +1,49 @@
 package com.companion.cc.ui.memory
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Mood
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.SmartToy
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material3.Divider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -21,13 +53,14 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.companion.cc.domain.model.Message
 import com.companion.cc.domain.model.MessageRole
 import com.companion.cc.domain.model.MessagesByDate
-import com.companion.cc.ui.theme.CompactGlassSurface
+import com.companion.cc.ui.theme.GlassEffectTier
+import com.companion.cc.ui.theme.LocalVisualTheme
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Date
+import java.util.Locale
 
 /**
  * 树状可视化记忆树组件
@@ -39,10 +72,13 @@ fun TreeVisualizedMemoryList(
 ) {
     LazyColumn(
         modifier = modifier,
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        items(messagesByDate) { dateGroup ->
+        items(
+            items = messagesByDate,
+            key = { it.date }
+        ) { dateGroup ->
             TreeDateNode(dateGroup = dateGroup)
         }
     }
@@ -51,9 +87,9 @@ fun TreeVisualizedMemoryList(
 @Composable
 private fun TreeDateNode(dateGroup: MessagesByDate) {
     var isExpanded by remember { mutableStateOf(true) }
+    val expansionMotionEnabled = LocalVisualTheme.current.effectTier != GlassEffectTier.STEADY
 
     Column {
-        // 日期根节点
         TreeNodeCard(
             icon = Icons.Default.CalendarMonth,
             title = formatDateChinese(dateGroup.date),
@@ -63,15 +99,20 @@ private fun TreeDateNode(dateGroup: MessagesByDate) {
             color = MaterialTheme.colorScheme.primary
         )
 
-        // 展开后显示消息子节点
-        if (isExpanded) {
+        AnimatedVisibility(
+            visible = isExpanded,
+            enter = if (expansionMotionEnabled) expandVertically() + fadeIn() else EnterTransition.None,
+            exit = if (expansionMotionEnabled) shrinkVertically() + fadeOut() else ExitTransition.None
+        ) {
             Column {
                 dateGroup.messages.forEachIndexed { index, message ->
-                    TreeMessageNode(
-                        message = message,
-                        isLast = index == dateGroup.messages.size - 1,
-                        level = 1
-                    )
+                    key(message.id) {
+                        TreeMessageNode(
+                            message = message,
+                            isLast = index == dateGroup.messages.size - 1,
+                            level = 1
+                        )
+                    }
                 }
             }
         }
@@ -85,14 +126,11 @@ private fun TreeMessageNode(
     level: Int
 ) {
     var isExpanded by remember { mutableStateOf(false) }
+    val expansionMotionEnabled = LocalVisualTheme.current.effectTier != GlassEffectTier.STEADY
 
-    Row(
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        // 树状连接线
+    Row(modifier = Modifier.fillMaxWidth()) {
         TreeConnector(level = level, isLast = isLast)
 
-        // 消息节点
         Column(
             modifier = Modifier
                 .weight(1f)
@@ -100,19 +138,23 @@ private fun TreeMessageNode(
         ) {
             TreeNodeCard(
                 icon = if (message.role == MessageRole.USER) Icons.Default.Person else Icons.Default.SmartToy,
-                title = if (message.role == MessageRole.USER) "用户" else "AI助手",
-                subtitle = message.content.take(50) + if (message.content.length > 50) "..." else "",
+                title = if (message.role == MessageRole.USER) "用户" else "AI 助手",
+                subtitle = message.content,
                 isExpanded = isExpanded,
                 onToggle = { isExpanded = !isExpanded },
-                color = if (message.role == MessageRole.USER)
+                color = if (message.role == MessageRole.USER) {
                     MaterialTheme.colorScheme.tertiary
-                else
-                    MaterialTheme.colorScheme.secondary,
+                } else {
+                    MaterialTheme.colorScheme.secondary
+                },
                 importance = message.importance
             )
 
-            // 展开后显示完整内容和详细信息
-            if (isExpanded) {
+            AnimatedVisibility(
+                visible = isExpanded,
+                enter = if (expansionMotionEnabled) expandVertically() + fadeIn() else EnterTransition.None,
+                exit = if (expansionMotionEnabled) shrinkVertically() + fadeOut() else ExitTransition.None
+            ) {
                 MessageDetailCard(message = message)
             }
         }
@@ -131,19 +173,15 @@ private fun TreeConnector(level: Int, isLast: Boolean) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val indent = (level - 1) * 24.dp.toPx()
             val startX = indent + 12.dp.toPx()
-            val startY = 0f
             val endY = if (isLast) 32.dp.toPx() else size.height
 
-            // 垂直线
             drawLine(
                 color = lineColor,
-                start = Offset(startX, startY),
+                start = Offset(startX, 0f),
                 end = Offset(startX, endY),
                 strokeWidth = 2.dp.toPx(),
                 pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 5f))
             )
-
-            // 水平连接线
             drawLine(
                 color = lineColor,
                 start = Offset(startX, 32.dp.toPx()),
@@ -164,39 +202,31 @@ private fun TreeNodeCard(
     color: Color,
     importance: Int = 50
 ) {
-    CompactGlassSurface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onToggle),
-        shape = RoundedCornerShape(12.dp)
-    ) {
+    Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
+                .clickable(onClick = onToggle)
+                .padding(horizontal = 4.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 图标
             Box(
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(36.dp)
                     .clip(CircleShape)
-                    .background(color.copy(alpha = 0.2f)),
+                    .background(color.copy(alpha = 0.14f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
                     tint = color,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(19.dp)
                 )
             }
 
-            // 内容
-            Column(
-                modifier = Modifier.weight(1f)
-            ) {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleSmall,
@@ -207,12 +237,11 @@ private fun TreeNodeCard(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
+                    maxLines = if (isExpanded) 3 else 2,
                     overflow = TextOverflow.Ellipsis
                 )
             }
 
-            // 重要度标记
             if (importance > 70) {
                 Icon(
                     imageVector = Icons.Default.Star,
@@ -221,100 +250,85 @@ private fun TreeNodeCard(
                     modifier = Modifier.size(16.dp)
                 )
             }
-
-            // 展开/折叠图标
             Icon(
                 imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                 contentDescription = if (isExpanded) "折叠" else "展开",
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+        Divider(color = MaterialTheme.colorScheme.outlineVariant)
     }
 }
 
 @Composable
 private fun MessageDetailCard(message: Message) {
-    Surface(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 8.dp),
-        shape = RoundedCornerShape(8.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
-        tonalElevation = 0.dp
+            .padding(start = 12.dp, top = 6.dp, end = 4.dp, bottom = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+        Text(
+            text = message.content,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // 完整内容
-            Text(
-                text = message.content,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-
-            Divider()
-
-            // 元数据
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                // 时间
+                Icon(
+                    imageVector = Icons.Default.Schedule,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = formatTime(message.timestamp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            if (!message.emotion.isNullOrBlank()) {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Schedule,
+                        imageVector = Icons.Default.Mood,
                         contentDescription = null,
                         modifier = Modifier.size(14.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = formatTime(message.timestamp),
+                        text = message.emotion,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+            }
 
-                // 情绪
-                if (!message.emotion.isNullOrBlank()) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Mood,
-                            contentDescription = null,
-                            modifier = Modifier.size(14.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = message.emotion,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                // 重要度
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.TrendingUp,
-                        contentDescription = null,
-                        modifier = Modifier.size(14.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = "${message.importance}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.TrendingUp,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = "${message.importance}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }

@@ -188,7 +188,7 @@ val APP_MIGRATION_8_9 = object : Migration(8, 9) {
         val cursor = database.query("PRAGMA table_info(messages)")
         val existingColumns = mutableSetOf<String>()
         while (cursor.moveToNext()) {
-            val columnName = cursor.getString(cursor.getColumnIndex("name"))
+            val columnName = cursor.getString(cursor.getColumnIndexOrThrow("name"))
             existingColumns.add(columnName)
         }
         cursor.close()
@@ -396,5 +396,119 @@ val APP_MIGRATION_11_12 = object : Migration(11, 12) {
             )
         """.trimIndent())
         database.execSQL("CREATE INDEX IF NOT EXISTS index_memory_retrieval_feedback_nodeId ON memory_retrieval_feedback(nodeId)")
+    }
+}
+
+val APP_MIGRATION_12_13 = object : Migration(12, 13) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("""
+            CREATE TABLE IF NOT EXISTS character_memory_capsules (
+                id TEXT NOT NULL PRIMARY KEY,
+                userId TEXT NOT NULL,
+                sourceCharacterId TEXT NOT NULL,
+                schemaVersion INTEGER NOT NULL,
+                revivalTokenHash TEXT NOT NULL,
+                encryptedRevivalToken TEXT NOT NULL,
+                encryptedPayload TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'available',
+                createdAt INTEGER NOT NULL,
+                deletedAt INTEGER NOT NULL,
+                restoredAt INTEGER,
+                restoredCharacterId TEXT,
+                exportedAt INTEGER
+            )
+        """.trimIndent())
+        database.execSQL("CREATE INDEX IF NOT EXISTS index_character_memory_capsules_userId_createdAt ON character_memory_capsules(userId, createdAt)")
+        database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_character_memory_capsules_revivalTokenHash ON character_memory_capsules(revivalTokenHash)")
+        database.execSQL("""
+            CREATE TABLE IF NOT EXISTS character_cleanup_tasks (
+                id TEXT NOT NULL PRIMARY KEY,
+                userId TEXT NOT NULL,
+                characterId TEXT NOT NULL,
+                avatarReference TEXT,
+                status TEXT NOT NULL DEFAULT 'pending',
+                attempts INTEGER NOT NULL DEFAULT 0,
+                lastError TEXT,
+                createdAt INTEGER NOT NULL,
+                updatedAt INTEGER NOT NULL
+            )
+        """.trimIndent())
+        database.execSQL("CREATE INDEX IF NOT EXISTS index_character_cleanup_tasks_userId_status_updatedAt ON character_cleanup_tasks(userId, status, updatedAt)")
+    }
+}
+
+val APP_MIGRATION_13_14 = object : Migration(13, 14) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("""
+            CREATE TABLE IF NOT EXISTS memory_scope_quarantine (
+                resourceType TEXT NOT NULL,
+                resourceId TEXT NOT NULL,
+                legacyScopeKey TEXT NOT NULL,
+                createdAt INTEGER NOT NULL,
+                PRIMARY KEY(resourceType, resourceId)
+            )
+        """.trimIndent())
+        database.execSQL(
+            "CREATE INDEX IF NOT EXISTS index_memory_scope_quarantine_legacyScopeKey " +
+                "ON memory_scope_quarantine(legacyScopeKey)"
+        )
+        database.execSQL("""
+            INSERT OR IGNORE INTO memory_scope_quarantine
+                (resourceType, resourceId, legacyScopeKey, createdAt)
+            SELECT 'source', id, scopeKey, 0
+            FROM memory_sources
+            WHERE scopeKey NOT LIKE 'user:%'
+        """.trimIndent())
+        database.execSQL("""
+            INSERT OR IGNORE INTO memory_scope_quarantine
+                (resourceType, resourceId, legacyScopeKey, createdAt)
+            SELECT 'review', id, scopeKey, 0
+            FROM memory_reviews
+            WHERE scopeKey NOT LIKE 'user:%'
+        """.trimIndent())
+        database.execSQL("""
+            INSERT OR IGNORE INTO memory_scope_quarantine
+                (resourceType, resourceId, legacyScopeKey, createdAt)
+            SELECT 'node', id, scopeKey, 0
+            FROM memory_nodes
+            WHERE scopeKey NOT LIKE 'user:%'
+        """.trimIndent())
+        database.execSQL("""
+            INSERT OR IGNORE INTO memory_scope_quarantine
+                (resourceType, resourceId, legacyScopeKey, createdAt)
+            SELECT 'relation', fromNodeId || ':' || toNodeId || ':' || relationType, scopeKey, 0
+            FROM memory_relations
+            WHERE scopeKey NOT LIKE 'user:%'
+        """.trimIndent())
+        database.execSQL("""
+            INSERT OR IGNORE INTO memory_scope_quarantine
+                (resourceType, resourceId, legacyScopeKey, createdAt)
+            SELECT 'retrieval_trace', id, scopeKey, 0
+            FROM memory_retrieval_traces
+            WHERE scopeKey NOT LIKE 'user:%'
+        """.trimIndent())
+    }
+}
+
+val APP_MIGRATION_14_15 = object : Migration(14, 15) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("""
+            CREATE TABLE IF NOT EXISTS schedules (
+                id TEXT NOT NULL PRIMARY KEY,
+                userId TEXT NOT NULL,
+                characterId TEXT NOT NULL,
+                prompt TEXT NOT NULL,
+                recurrence TEXT NOT NULL,
+                nextRunAt INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'ACTIVE',
+                lastError TEXT,
+                createdAt INTEGER NOT NULL,
+                updatedAt INTEGER NOT NULL
+            )
+        """.trimIndent())
+        database.execSQL(
+            "CREATE INDEX IF NOT EXISTS index_schedules_userId_characterId_status_nextRunAt " +
+                "ON schedules(userId, characterId, status, nextRunAt)"
+        )
     }
 }

@@ -18,6 +18,14 @@ class ImportDataUseCase @Inject constructor(
     suspend operator fun invoke(jsonString: String): ImportResult {
         return try {
             val exportData = json.decodeFromString<ExportData>(jsonString)
+            require(exportData.version == SUPPORTED_VERSION) {
+                "不支持的导入版本: ${exportData.version}"
+            }
+
+            val currentUserId = settingsManager.userIdFlow.first()
+            require(exportData.userId.trim() == currentUserId.trim()) {
+                "导入数据属于其他用户"
+            }
 
             // 导入设置
             if (exportData.settings.apiKey.isNotBlank()) {
@@ -29,9 +37,6 @@ class ImportDataUseCase @Inject constructor(
             if (exportData.settings.model.isNotBlank()) {
                 settingsManager.saveModel(exportData.settings.model)
             }
-
-            // 获取当前用户ID
-            val currentUserId = settingsManager.userIdFlow.first()
 
             // 导入消息
             val messages = exportData.messages.map { exportMsg ->
@@ -59,6 +64,10 @@ class ImportDataUseCase @Inject constructor(
         } catch (e: Exception) {
             ImportResult.Error(e.message ?: "导入失败")
         }
+    }
+
+    private companion object {
+        const val SUPPORTED_VERSION = "1.0"
     }
 }
 

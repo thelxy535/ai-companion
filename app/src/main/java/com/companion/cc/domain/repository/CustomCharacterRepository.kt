@@ -84,6 +84,13 @@ class CustomCharacterRepository @Inject constructor(
     }
 
     /**
+     * Delete only when the character belongs to the requesting user.
+     */
+    suspend fun deleteCharacterForUser(characterId: String, userId: String): Boolean {
+        return characterDao.deleteForUser(characterId, userId) > 0
+    }
+
+    /**
      * 删除角色
      */
     suspend fun deleteCharacter(characterId: String) {

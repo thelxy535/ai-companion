@@ -1,8 +1,10 @@
 package com.companion.cc.data.remote.api
 
 import com.companion.cc.data.remote.model.ChatRequest
-import com.companion.cc.data.remote.model.ChatStreamChunk
+import com.companion.cc.domain.model.StreamHttpException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
@@ -21,8 +23,12 @@ import javax.inject.Singleton
 class StreamChatService @Inject constructor(
     private val okHttpClient: OkHttpClient
 ) {
+    @Volatile
+    private var activeCall: okhttp3.Call? = null
 
-    private val gson = com.google.gson.Gson()
+    fun cancelActiveCall() {
+        activeCall?.cancel()
+    }
 
     /**
      * 流式聊天
@@ -30,7 +36,6 @@ class StreamChatService @Inject constructor(
      */
     fun streamChat(
         baseUrl: String,
-        apiKey: String,
         request: ChatRequest
     ): Flow<String> = flow {
         // 规范化baseUrl（去掉尾部斜杠）
@@ -59,19 +64,31 @@ class StreamChatService @Inject constructor(
         // 注意：Authorization header由AuthInterceptor自动添加，不要手动添加以避免重复
 
         // 2. 执行请求
-        val response = okHttpClient.newCall(httpRequest).execute()
+        val call = okHttpClient.newCall(httpRequest)
+        activeCall = call
+        val cancellationHandle = currentCoroutineContext()[Job]?.invokeOnCompletion {
+            call.cancel()
+        }
+        try {
+            val response = call.execute()
+            response.use {
         android.util.Log.d("StreamChatService", "响应状态码: ${response.code}")
 
         if (!response.isSuccessful) {
             val errorBody = response.body?.string() ?: "未知错误"
             android.util.Log.e("StreamChatService", "API调用失败: ${response.code} - $errorBody")
-            throw Exception("API调用失败: ${response.code} - $errorBody")
+            throw StreamHttpException(
+                code = response.code,
+                message = "API调用失败: ${response.code} - $errorBody",
+                retryAfterSeconds = response.header("Retry-After")?.toLongOrNull()
+            )
         }
 
         // 3. 逐行读取SSE流
         android.util.Log.d("StreamChatService", "开始读取SSE流...")
         var lineCount = 0
         var chunkCount = 0
+        var done = false
 
         response.body?.source()?.use { source ->
             while (!source.exhausted()) {
@@ -85,27 +102,32 @@ class StreamChatService @Inject constructor(
                     // [DONE] 表示结束
                     if (data == "[DONE]") {
                         android.util.Log.d("StreamChatService", "收到[DONE]标记，流结束")
+                        done = true
                         break
                     }
 
-                    try {
-                        // 解析JSON（使用Gson）
-                        val chunk = gson.fromJson(data, ChatStreamChunk::class.java)
-
-                        // 提取content并emit（跳过空块，避免污染消息内容）
-                        val content = chunk.choices.firstOrNull()?.delta?.content
-                        if (!content.isNullOrBlank()) {
-                            chunkCount++
-                            emit(content)
-                        }
-                    } catch (e: Exception) {
-                        // 记录解析错误
-                        android.util.Log.e("StreamChatService", "解析失败 (行$lineCount): $data", e)
+                    val parsed = StreamSseParser.parse(listOf(line))
+                    parsed.errorMessage?.let { errorMessage ->
+                        throw IllegalStateException("服务器流错误: $errorMessage")
+                    }
+                    if (parsed.malformedChunks > 0) {
+                        throw IllegalStateException("解析流响应失败 (行$lineCount)")
+                    }
+                    parsed.fragments.forEach { content ->
+                        chunkCount++
+                        emit(content)
                     }
                 }
             }
         }
 
+        require(done) { "流式响应缺少[DONE]结束标记" }
+        require(chunkCount > 0) { "流式响应没有有效内容" }
         android.util.Log.d("StreamChatService", "流式响应完成，总行数: $lineCount, 有效块数: $chunkCount")
+        }
+        } finally {
+            cancellationHandle?.dispose()
+            if (activeCall === call) activeCall = null
+        }
     }.flowOn(Dispatchers.IO)  // 在IO线程执行网络请求
 }

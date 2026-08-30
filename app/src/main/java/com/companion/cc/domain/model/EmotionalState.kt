@@ -11,6 +11,7 @@ data class EmotionalState(
     val energy: Float,                          // 精力值 (0-1)
     val affection: Float,                       // 好感度 (0-1)
     val stress: Float,                          // 压力值 (0-1)
+    val attitude: Attitude = Attitude.NEUTRAL,  // V9 造人：对用户当前态度
     val timestamp: Long = System.currentTimeMillis()
 ) {
     /**
@@ -109,6 +110,46 @@ data class EmotionalState(
             )
         }
     }
+}
+
+/**
+ * V9 造人：对用户的当前态度（关系动力学的宏观状态）
+ * WARM/NEUTRAL 是常态；UPSET（闹别扭）可由用户道歉/示好修复；
+ * COLD（冷战）需要真诚台阶，时间久了才自然淡化（由引擎时间衰减处理）。
+ */
+enum class Attitude {
+    WARM,       // 亲昵——主动、语气软
+    NEUTRAL,    // 正常
+    UPSET,      // 闹别扭——嘴硬、语气冲
+    COLD;       // 冷战——极简回复，等台阶
+
+    fun isUpsetOrCold(): Boolean = this == UPSET || this == COLD
+}
+
+/**
+ * V9 造人：EmotionalState 紧凑持久化编解码（mood|energy|affection|stress|attitude|timestamp）
+ */
+object EmotionalStateCodec {
+    fun encode(state: EmotionalState): String = listOf(
+        state.mood.name,
+        state.energy.toString(),
+        state.affection.toString(),
+        state.stress.toString(),
+        state.attitude.name,
+        state.timestamp.toString(),
+    ).joinToString("|")
+
+    fun decode(raw: String?): EmotionalState? = runCatching {
+        val parts = (raw ?: return null).split("|")
+        EmotionalState(
+            mood = Mood.valueOf(parts[0]),
+            energy = parts[1].toFloat(),
+            affection = parts[2].toFloat(),
+            stress = parts[3].toFloat(),
+            attitude = if (parts.size > 4) Attitude.valueOf(parts[4]) else Attitude.NEUTRAL,
+            timestamp = if (parts.size > 5) parts[5].toLong() else System.currentTimeMillis(),
+        )
+    }.getOrNull()
 }
 
 /**

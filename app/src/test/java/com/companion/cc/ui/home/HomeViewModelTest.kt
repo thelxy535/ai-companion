@@ -63,6 +63,42 @@ class HomeViewModelTest {
         assertEquals(listOf("custom-1", "muse"), items.map { it.character.id })
     }
 
+    @Test
+    fun `home moves a character to the top when its latest message changes`() = runTest(main.dispatcher) {
+        val catalog = mock<CharacterCatalog>()
+        val users = mock<CurrentUserProvider>()
+        val messages = mock<MessageRepository>()
+        val onlineStatus = mock<OnlineStatusManager>()
+        val museMessages = MutableStateFlow<Message?>(TestMessages.message("muse", timestamp = 10L))
+        val customMessages = MutableStateFlow<Message?>(TestMessages.message("custom-1", timestamp = 20L))
+
+        whenever(users.userId).thenReturn(flowOf("user-real"))
+        whenever(onlineStatus.onlineCompanions).thenReturn(MutableStateFlow(emptySet()))
+        whenever(catalog.observeCharacters()).thenReturn(
+            flowOf(listOf(TestCharacters.muse(), TestCharacters.customChat("custom-1")))
+        )
+        whenever(messages.observeLatestMessage("user-real", "muse")).thenReturn(museMessages)
+        whenever(messages.observeLatestMessage("user-real", "custom-1")).thenReturn(customMessages)
+
+        val vm = HomeViewModel(messages, users, onlineStatus, catalog)
+        val job = vm.uiState.launchIn(this)
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf("custom-1", "muse"),
+            (vm.uiState.value as HomeUiState.Content).items.map { it.character.id }
+        )
+
+        museMessages.value = TestMessages.message("muse", timestamp = 30L)
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf("muse", "custom-1"),
+            (vm.uiState.value as HomeUiState.Content).items.map { it.character.id }
+        )
+        job.cancel()
+    }
+
     object TestCharacters {
         fun muse() = ChatCharacter.BuiltIn(
             id = "muse",

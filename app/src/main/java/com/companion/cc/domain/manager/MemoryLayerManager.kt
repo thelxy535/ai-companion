@@ -50,7 +50,7 @@ class MemoryLayerManager @Inject constructor(
             shortTerm = getShortTermMemory(userId, companionId),
             midTerm = getMidTermMemory(userId, companionId),
             longTerm = getLongTermMemory(userId, companionId, currentMessage),
-            permanent = getPermanentMemory(companionId)
+            permanent = getPermanentMemory(userId, companionId)
         )
     }
 
@@ -137,20 +137,21 @@ class MemoryLayerManager @Inject constructor(
      * 从人格配置动态生成而非硬编码，新增角色自动适配；
      * 配置是静态的，结果缓存后只需计算一次
      *
+     * @param userId 用户ID
      * @param companionId 伴侣ID
      * @return 永久记忆列表
      */
     private fun getPermanentMemory(
+        userId: String,
         companionId: String
     ): List<MemoryLayered.Permanent> {
-        val cacheKey = "permanent-$companionId"
+        val cacheKey = "permanent-$userId-$companionId"
 
         // 先检查缓存
         permanentMemoryCache[cacheKey]?.let { return it }
 
         // 从 PersonalityManager 获取人格配置
         val companion = personalityManager.getCompanionConfig(companionId) ?: return emptyList()
-        val userId = "default_user"
         val timestamp = System.currentTimeMillis()
 
         val memories = mutableListOf<MemoryLayered.Permanent>()
@@ -209,6 +210,10 @@ class MemoryLayerManager @Inject constructor(
         permanentMemoryCache[cacheKey] = memories
 
         return memories
+    }
+
+    fun invalidateCharacter(userId: String, companionId: String) {
+        permanentMemoryCache.remove("permanent-$userId-$companionId")
     }
 
     /**

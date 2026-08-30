@@ -32,9 +32,13 @@ fun MessageTrendChart(
     val trendColor = visualTheme.tokens.chart.trend
     val gridColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
     val pointCenterColor = MaterialTheme.colorScheme.surface
+    val chartMotionEnabled = chartAnimationEnabled(visualTheme.effectTier)
     val animationProgress by animateFloatAsState(
         targetValue = 1f,
-        animationSpec = tween(durationMillis = 1000, easing = FastOutSlowInEasing),
+        animationSpec = tween(
+            durationMillis = if (chartMotionEnabled) 1000 else 0,
+            easing = FastOutSlowInEasing
+        ),
         label = "chart_animation"
     )
 
@@ -165,9 +169,13 @@ fun EmotionPieChart(
     val emotionColors = remember(emotionData.keys, chartColors) {
         emotionData.keys.associateWith { emotion -> emotionColor(emotion, chartColors) }
     }
+    val chartMotionEnabled = chartAnimationEnabled(LocalVisualTheme.current.effectTier)
     val animationProgress by animateFloatAsState(
         targetValue = 1f,
-        animationSpec = tween(durationMillis = 1000, easing = FastOutSlowInEasing),
+        animationSpec = tween(
+            durationMillis = if (chartMotionEnabled) 1000 else 0,
+            easing = FastOutSlowInEasing
+        ),
         label = "pie_animation"
     )
 

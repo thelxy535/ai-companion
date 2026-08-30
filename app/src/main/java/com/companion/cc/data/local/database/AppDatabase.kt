@@ -6,6 +6,10 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import com.companion.cc.data.local.dao.CustomCharacterDao
+import com.companion.cc.data.local.dao.CharacterCleanupTaskDao
+import com.companion.cc.data.local.dao.CharacterMemoryCapsuleDao
+import com.companion.cc.data.local.dao.ScheduleDao
+import com.companion.cc.data.local.dao.MemoryScopeQuarantineDao
 import com.companion.cc.data.local.dao.InteractionTimeDao
 import com.companion.cc.data.local.dao.MemoryDao
 import com.companion.cc.data.local.dao.StatsDao
@@ -13,6 +17,9 @@ import com.companion.cc.data.local.dao.UserEventDao
 import com.companion.cc.data.local.dao.UserProfileDao
 import com.companion.cc.data.local.dao.VectorMemoryDao
 import com.companion.cc.data.local.entity.CustomCharacterEntity
+import com.companion.cc.data.local.entity.CharacterCleanupTaskEntity
+import com.companion.cc.data.local.entity.CharacterMemoryCapsuleEntity
+import com.companion.cc.data.local.entity.ScheduleEntity
 import com.companion.cc.data.local.entity.InteractionTimeEntity
 import com.companion.cc.data.local.entity.MemoryEntity
 import com.companion.cc.data.local.entity.MessageEntity
@@ -28,6 +35,7 @@ import com.companion.cc.data.local.entity.MemoryVersionEntity
 import com.companion.cc.data.local.entity.MemoryRelationEntity
 import com.companion.cc.data.local.entity.MemoryRetrievalTraceEntity
 import com.companion.cc.data.local.entity.MemoryRetrievalFeedbackEntity
+import com.companion.cc.data.local.entity.MemoryScopeQuarantineEntity
 import com.companion.cc.domain.usecase.MoodStateDao
 import com.companion.cc.domain.usecase.MoodStateEntity
 
@@ -43,6 +51,9 @@ import com.companion.cc.domain.usecase.MoodStateEntity
         InteractionTimeEntity::class,
         UserEventEntity::class,
         CustomCharacterEntity::class,
+        CharacterMemoryCapsuleEntity::class,
+        CharacterCleanupTaskEntity::class,
+        ScheduleEntity::class,
         MemorySourceEntity::class,
         MemoryReviewEntity::class,
         MemoryNodeEntity::class,
@@ -50,9 +61,10 @@ import com.companion.cc.domain.usecase.MoodStateEntity
         MemoryVersionEntity::class,
         MemoryRelationEntity::class,
         MemoryRetrievalTraceEntity::class,
-        MemoryRetrievalFeedbackEntity::class
+        MemoryRetrievalFeedbackEntity::class,
+        MemoryScopeQuarantineEntity::class
     ],
-    version = 12,  // 鏂板锛氳嚜瀹氫箟瑙掕壊琛?    exportSchema = false
+    version = 15,  // 隔离缺少用户身份的旧 Memory 2.0 scope
 )
 @TypeConverters(VectorMemoryConverters::class, AppTypeConverters::class)
 abstract class AppDatabase : RoomDatabase() {
@@ -67,6 +79,9 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun interactionTimeDao(): InteractionTimeDao
     abstract fun userEventDao(): UserEventDao
     abstract fun customCharacterDao(): CustomCharacterDao
+    abstract fun characterMemoryCapsuleDao(): CharacterMemoryCapsuleDao
+    abstract fun characterCleanupTaskDao(): CharacterCleanupTaskDao
+    abstract fun scheduleDao(): ScheduleDao
     abstract fun memorySourceDao(): com.companion.cc.data.local.dao.MemorySourceDao
     abstract fun memoryReviewDao(): com.companion.cc.data.local.dao.MemoryReviewDao
     abstract fun memoryNodeDao(): com.companion.cc.data.local.dao.MemoryNodeDao
@@ -74,6 +89,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun memoryVersionDao(): com.companion.cc.data.local.dao.MemoryVersionDao
     abstract fun memoryRelationDao(): com.companion.cc.data.local.dao.MemoryRelationDao
     abstract fun memoryRetrievalDao(): com.companion.cc.data.local.dao.MemoryRetrievalDao
+    abstract fun memoryScopeQuarantineDao(): MemoryScopeQuarantineDao
 
     companion object {
         @Volatile
@@ -97,7 +113,10 @@ abstract class AppDatabase : RoomDatabase() {
                         APP_MIGRATION_8_9,
                         APP_MIGRATION_9_10,
                         APP_MIGRATION_10_11,
-                        APP_MIGRATION_11_12
+                        APP_MIGRATION_11_12,
+                        APP_MIGRATION_12_13,
+                        APP_MIGRATION_13_14,
+                        APP_MIGRATION_14_15
                     )
                     .fallbackToDestructiveMigrationOnDowngrade()
                     .build()

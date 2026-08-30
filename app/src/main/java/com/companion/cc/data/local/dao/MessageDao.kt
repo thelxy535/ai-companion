@@ -19,6 +19,14 @@ interface MessageDao {
         offset: Int
     ): Flow<List<MessageEntity>>
 
+    @Query("""
+        SELECT * FROM messages
+        WHERE user_id = :userId
+        ORDER BY timestamp ASC, id ASC
+    """)
+    fun getAllMessages(userId: String): Flow<List<MessageEntity>>
+
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMessage(message: MessageEntity)
 
@@ -36,6 +44,9 @@ interface MessageDao {
 
     @Query("DELETE FROM messages WHERE id = :messageId")
     suspend fun deleteMessage(messageId: String)
+
+    @Query("DELETE FROM messages WHERE user_id = :userId AND companion_id = :companionId")
+    suspend fun deleteMessagesByCompanion(userId: String, companionId: String)
 
     @Query("UPDATE messages SET importance = :importance WHERE id = :messageId")
     suspend fun updateMessageImportance(messageId: String, importance: Int)

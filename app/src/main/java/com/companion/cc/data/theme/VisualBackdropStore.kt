@@ -26,6 +26,8 @@ class VisualBackdropStore @Inject constructor(
     private val managedDirectory: File
         get() = File(context.filesDir, DIRECTORY_NAME)
 
+    // stream 由下方 use{} 关闭；方法引用形式 lint 无法识别，Recycle 为误报
+    @Suppress("Recycle")
     suspend fun stage(source: Uri): String = withContext(Dispatchers.IO) {
         val stream = context.contentResolver.openInputStream(source)
             ?: throw IllegalArgumentException("无法读取背景图片")

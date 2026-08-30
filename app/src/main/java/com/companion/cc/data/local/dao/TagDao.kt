@@ -17,6 +17,9 @@ interface TagDao {
     @Delete
     suspend fun deleteTag(tag: TagEntity)
 
+    @Query("DELETE FROM message_tags WHERE message_id IN (SELECT id FROM messages WHERE user_id = :userId AND companion_id = :companionId)")
+    suspend fun deleteMessageTagsForCompanion(userId: String, companionId: String): Int
+
     // 消息-标签关联
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun addTagToMessage(messageTag: MessageTagEntity)

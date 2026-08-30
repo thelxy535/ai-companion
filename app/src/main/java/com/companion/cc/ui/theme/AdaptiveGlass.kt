@@ -3,7 +3,9 @@ package com.companion.cc.ui.theme
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
@@ -11,8 +13,12 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
@@ -21,7 +27,6 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,17 +34,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.LayoutCoordinates
@@ -49,11 +55,11 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.pointer.pointerInput
 import kotlin.math.roundToInt
-import kotlinx.coroutines.isActive
 
 /** Scene geometry shared by glass surfaces so their backdrop replicas align. */
 @Stable
@@ -167,45 +173,20 @@ fun AdaptiveBackdropLayer(
     backdrop: BackdropSpec,
     modifier: Modifier = Modifier
 ) {
-    var phase by remember { mutableStateOf(0f) }
-    LaunchedEffect(backdrop.motionScale) {
-        if (backdrop.motionScale == 0f) {
-            phase = 0f
-            return@LaunchedEffect
-        }
-        var lastFrame = 0L
-        while (isActive) {
-            withFrameNanos { now ->
-                if (lastFrame != 0L) {
-                    val seconds = (now - lastFrame) / 1_000_000_000f
-                    phase = (phase + seconds * 0.055f * backdrop.motionScale) % 1f
-                }
-                lastFrame = now
-            }
-        }
-    }
+    // Route changes use the target backdrop immediately so the previous scene
+    // cannot flash through during navigation.
+    val startColor = backdrop.baseStart
+    val endColor = backdrop.baseEnd
 
     Box(modifier = modifier) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             drawRect(
                 brush = Brush.linearGradient(
-                    colors = listOf(backdrop.baseStart, backdrop.baseEnd),
+                    colors = listOf(startColor, endColor),
                     start = Offset.Zero,
                     end = Offset(size.width, size.height)
                 )
             )
-            if (backdrop.motionScale > 0f) {
-                val stripeAlpha = 0.035f * backdrop.motionScale
-                for (index in 0..7) {
-                    val y = size.height * (index + 1) / 9f
-                    drawLine(
-                        color = backdrop.primaryBloom.copy(alpha = stripeAlpha),
-                        start = Offset(0f, y),
-                        end = Offset(size.width, y),
-                        strokeWidth = size.minDimension * 0.004f
-                    )
-                }
-            }
         }
 
         val userBackdrop = backdrop.userBackdrop
@@ -474,6 +455,38 @@ fun GlassDialogSurface(
         useStrongFill = true,
         content = { content() }
     )
+}
+
+@Composable
+fun GlassAlertDialog(
+    onDismissRequest: () -> Unit,
+    title: @Composable (() -> Unit)? = null,
+    text: @Composable (() -> Unit)? = null,
+    confirmButton: @Composable () -> Unit,
+    dismissButton: @Composable (() -> Unit)? = null,
+    icon: @Composable (() -> Unit)? = null
+) {
+    Dialog(onDismissRequest = onDismissRequest) {
+        GlassDialogSurface(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(24.dp)) {
+                icon?.let {
+                    it()
+                    Spacer(modifier = Modifier.padding(top = 12.dp))
+                }
+                title?.invoke()
+                if (title != null && text != null) {
+                    Spacer(modifier = Modifier.padding(top = 12.dp))
+                }
+                text?.invoke()
+                Spacer(modifier = Modifier.padding(top = 20.dp))
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    Spacer(modifier = Modifier.weight(1f))
+                    dismissButton?.invoke()
+                    confirmButton()
+                }
+            }
+        }
+    }
 }
 
 @Composable

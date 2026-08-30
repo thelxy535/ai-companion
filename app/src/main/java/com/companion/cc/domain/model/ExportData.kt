@@ -1,6 +1,7 @@
 package com.companion.cc.domain.model
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 
 @Serializable
 data class ExportData(
@@ -27,7 +28,7 @@ data class ExportMessage(
 
 @Serializable
 data class ExportSettings(
-    val apiKey: String = "",
+    @Transient val apiKey: String = "",
     val baseURL: String = "",
     val model: String = ""
 )

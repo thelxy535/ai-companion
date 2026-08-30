@@ -25,6 +25,9 @@ class MessageRepositoryImpl @Inject constructor(
             }
     }
 
+    override fun getAllMessages(userId: String): Flow<List<Message>> =
+        messageDao.getAllMessages(userId).map { entities -> entities.map { it.toDomain() } }
+
     override suspend fun saveMessage(message: Message) {
         messageDao.insertMessage(message.toEntity())
     }
@@ -46,6 +49,10 @@ class MessageRepositoryImpl @Inject constructor(
 
     override suspend fun deleteMessage(messageId: String) {
         messageDao.deleteMessage(messageId)
+    }
+
+    override suspend fun deleteMessagesByCompanion(userId: String, companionId: String) {
+        messageDao.deleteMessagesByCompanion(userId, companionId)
     }
 
     override suspend fun updateMessageImportance(messageId: String, importance: Int) {
@@ -78,7 +85,8 @@ class MessageRepositoryImpl @Inject constructor(
         importance = importance,
         action = action,
         imageUrl = imageUrl,
-        imageAnalysis = imageAnalysis
+        imageAnalysis = imageAnalysis,
+        isFavorited = isFavorited
     )
 
     private fun Message.toEntity() = MessageEntity(

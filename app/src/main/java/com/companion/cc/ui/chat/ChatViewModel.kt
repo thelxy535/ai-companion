@@ -7,8 +7,14 @@ import com.companion.cc.data.local.SettingsManager
 import com.companion.cc.di.ApplicationScope
 import com.companion.cc.domain.manager.*
 import com.companion.cc.domain.identity.CurrentUserProvider
+import com.companion.cc.domain.character.CharacterCatalog
+import com.companion.cc.domain.character.CharacterPromptResolver
+import com.companion.cc.domain.character.TemperamentDirective
+import com.companion.cc.domain.character.ResolvedCharacterPrompt
+import com.companion.cc.domain.character.UnknownCharacterException
 import com.companion.cc.domain.engine.EmotionalEngine
 import com.companion.cc.domain.model.EmotionalState
+import com.companion.cc.domain.model.EmotionalStateCodec
 import com.companion.cc.domain.model.Message
 import com.companion.cc.domain.model.MessageRole
 import com.companion.cc.domain.model.ChatError
@@ -18,6 +24,7 @@ import com.companion.cc.domain.model.ChatCharacter
 import com.companion.cc.domain.repository.MessageRepository
 import com.companion.cc.domain.usecase.*
 import com.companion.cc.domain.memory.MemoryRetrievalService
+import com.companion.cc.domain.memory.MemoryScopeKey
 import com.companion.cc.util.Logger
 import com.companion.cc.util.NetworkMonitor
 import com.companion.cc.util.NetworkState
@@ -25,6 +32,11 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import javax.inject.Inject
+
+data class MemoryRetrievalTraceReference(
+    val companionId: String,
+    val traceId: String
+)
 
 /**
  * 完整集成版 ChatViewModel
@@ -47,8 +59,6 @@ class ChatViewModel @Inject constructor(
     private val detectEmotionUseCase: DetectEmotionUseCase,
     private val messageRepository: MessageRepository,
     private val memoryManagementUseCase: MemoryManagementUseCase,
-    private val companionStateManager: CompanionStateManager,
-    // 移除旧的 systemPromptManager，只使用新的 personalityManager
 
     // 新的依赖（新功能）
     private val memoryLayerManager: MemoryLayerManager,
@@ -68,6 +78,7 @@ class ChatViewModel @Inject constructor(
     // Task 6 新增：统一角色管理
     private val characterCatalog: CharacterCatalog,
     private val currentUserProvider: CurrentUserProvider,
+    private val characterPromptResolver: CharacterPromptResolver,
 
     // 打字状态管理器
     private val typingStateManager: TypingStateManager,
@@ -88,13 +99,54 @@ class ChatViewModel @Inject constructor(
 
     private suspend fun getUserId(): String = currentUserProvider.requireUserId()
 
-    private suspend fun appendMemory2Context(basePrompt: String, companionId: String, query: String): String {
+    private suspend fun resolvePromptForRequest(
+        userId: String,
+        companionId: String
+    ): ResolvedCharacterPrompt {
+        val resolved = characterPromptResolver.resolve(companionId)
+        personalityManager.cacheResolvedConfig(resolved.config)
+        memoryLayerManager.invalidateCharacter(userId, companionId)
+        return resolved
+    }
+
+    private suspend fun appendMemory2Context(
+        basePrompt: String,
+        userId: String,
+        companionId: String,
+        query: String
+    ): String {
+        _latestMemoryRetrievalTrace.value = null
         return runCatching {
-            val result = memoryRetrievalService.retrieve(query, "companion:$companionId")
+            val result = memoryRetrievalService.retrieve(
+                query,
+                MemoryScopeKey.forCharacter(userId, companionId)
+            )
+            _latestMemoryRetrievalTrace.value = MemoryRetrievalTraceReference(companionId, result.traceId)
             if (result.memories.isEmpty()) basePrompt else basePrompt + "\n\n【已确认的长期记忆】\n" + result.memories.joinToString("\n") { "- ${it.node.content}" }
         }.getOrElse { error ->
             Logger.w("ChatViewModel", "Memory 2.0 retrieval fallback: ${error.message}")
+            _error.value = ChatError.UnknownError(
+                message = "Memory retrieval unavailable: ${error.message ?: "unknown"}",
+                userMessage = "长期记忆暂不可用，本次回复未使用长期记忆",
+                canRetry = false
+            )
             basePrompt
+        }
+    }
+
+    // V9 造人·第二层：把 TA 的内在状态翻译成行为指令（心情真正影响说话方式）
+    private fun appendTemperamentDirective(basePrompt: String, userId: String, companionId: String): String {
+        val state = emotionalEngine.getEmotionalState(userId, companionId)
+        val directive = TemperamentDirective.build(state, emotionalEngine.temperamentFor(companionId))
+        return basePrompt + "\n\n" + directive
+    }
+
+    private fun persistEmotionSnapshot(userId: String, companionId: String) {
+        viewModelScope.launch {
+            settingsManager.saveEmotionSnapshot(
+                "$userId:$companionId",
+                EmotionalStateCodec.encode(emotionalEngine.getEmotionalState(userId, companionId))
+            )
         }
     }
 
@@ -106,8 +158,18 @@ class ChatViewModel @Inject constructor(
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
+    private val _sendState = MutableStateFlow<ChatSendState>(ChatSendState.Idle)
+    val sendState: StateFlow<ChatSendState> = _sendState.asStateFlow()
+    private var activeSendJob: Job? = null
+    private var activePartialResponse: String = ""
+    private var activeAssistantMessageId: String? = null
+
     private val _error = MutableStateFlow<ChatError?>(null)
     val error: StateFlow<ChatError?> = _error.asStateFlow()
+
+    private val _latestMemoryRetrievalTrace = MutableStateFlow<MemoryRetrievalTraceReference?>(null)
+    val latestMemoryRetrievalTrace: StateFlow<MemoryRetrievalTraceReference?> =
+        _latestMemoryRetrievalTrace.asStateFlow()
 
     // 最后一次失败的消息（用于重试）：(userId, companionId, content)
     private var lastFailedMessage: Triple<String, String, String>? = null
@@ -146,6 +208,12 @@ class ChatViewModel @Inject constructor(
     val latestStreamingMessageId: StateFlow<String?> = _latestStreamingMessageId.asStateFlow()
 
     // 头像状态
+    // V7 五材质风格（GLASS/MATTE/LIQUID/FABRIC/SANDBLASTED），设置页可切
+    val materialStyle: StateFlow<String> = settingsManager.materialStyleFlow.stateIn(
+        viewModelScope,
+        SharingStarted.Eagerly,
+        "GLASS"
+    )
     val userAvatar: StateFlow<String?> = settingsManager.userAvatarFlow.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
@@ -217,10 +285,13 @@ class ChatViewModel @Inject constructor(
         // 通过 CharacterCatalog 加载角色信息
         viewModelScope.launch {
             try {
-                val userId = currentUserProvider.requireUserId()
-                val character = characterCatalog.getCharacter(userId, characterId)
+                val userId = getUserId()
+                val character = characterCatalog.getCharacter(characterId)
 
                 if (character != null) {
+                    val resolved = characterPromptResolver.resolve(characterId)
+                    personalityManager.cacheResolvedConfig(resolved.config)
+                    memoryLayerManager.invalidateCharacter(userId, characterId)
                     _currentCharacter.value = character
 
                     // 根据角色类型更新状态
@@ -229,22 +300,6 @@ class ChatViewModel @Inject constructor(
                             _isCustomCharacter.value = true
                             _customCharacterName.value = character.name
                             Logger.d("ChatViewModel", "加载自定义角色成功: ${character.name}")
-
-                            // 将自定义角色注册到 PersonalityManager
-                            val companionPersonality = com.companion.cc.domain.model.CompanionPersonality(
-                                id = character.id,
-                                name = character.name,
-                                greeting = "你好，我是${character.name}",
-                                systemPrompt = character.personality,
-                                traits = listOf(character.description),
-                                responseStyle = "友好",
-                                apiParameters = mapOf(
-                                    "temperature" to 0.8f,
-                                    "top_p" to 0.9f
-                                )
-                            )
-                            personalityManager.registerCompanion(companionPersonality)
-                            Logger.d("ChatViewModel", "已注册自定义人格: ${character.name}")
                         }
                         is ChatCharacter.BuiltIn -> {
                             _isCustomCharacter.value = false
@@ -254,8 +309,14 @@ class ChatViewModel @Inject constructor(
                     }
                 } else {
                     Logger.w("ChatViewModel", "Character not found or access denied: $characterId")
+                    _currentCharacter.value = null
                     _error.value = ChatError.CharacterNotFound
                 }
+            } catch (e: UnknownCharacterException) {
+                Logger.w("ChatViewModel", "Character prompt not found: $characterId")
+                _currentCharacter.value = null
+                _currentCharacterId.value = null
+                _error.value = ChatError.CharacterNotFound
             } catch (e: Exception) {
                 Logger.e("ChatViewModel", "Failed to load character", e)
                 _error.value = e.toChatError()
@@ -287,12 +348,18 @@ class ChatViewModel @Inject constructor(
 
     // ==================== 消息重试 ====================
 
+    fun stopSending() {
+        streamSendMessageUseCase.cancelActiveRequest()
+        activeSendJob?.cancel()
+    }
+
     /**
      * 重试最后一次失败的消息
      */
     fun retryLastMessage() {
         lastFailedMessage?.let { (_, companionId, content) ->
             Logger.d("ChatViewModel", "【重试】重试发送消息")
+            discardActivePartialResponse()
             _error.value = null  // 清除错误
             sendMessage(companionId, content)
         } ?: run {
@@ -303,6 +370,14 @@ class ChatViewModel @Inject constructor(
     /**
      * 清除错误状态
      */
+    private fun discardActivePartialResponse() {
+        val messageId = activeAssistantMessageId ?: return
+        _messages.value = _messages.value.filterNot { it.id == messageId }
+        activeAssistantMessageId = null
+        activePartialResponse = ""
+        _latestStreamingMessageId.value = null
+    }
+
     fun clearError() {
         _error.value = null
     }
@@ -365,6 +440,15 @@ class ChatViewModel @Inject constructor(
                 // 设置当前会话
                 contextManager.setCurrentSession(userId, companionId)
                 emotionalEngine.setCurrentSession(userId, companionId)
+                // V9 造人：恢复 TA 的内在状态并按时间衰减（重启不失忆）
+                viewModelScope.launch {
+                    val restored = EmotionalStateCodec.decode(settingsManager.loadEmotionSnapshot("$userId:$companionId"))
+                    if (restored != null) {
+                        emotionalEngine.setEmotionalState(userId, companionId, restored)
+                        emotionalEngine.applyTimeDecay(userId, companionId)
+                        persistEmotionSnapshot(userId, companionId)
+                    }
+                }
 
                 // Room Flow 自动监听数据库变化，无需轮询
                 getMessagesUseCase(userId, companionId).collect { messageList ->
@@ -394,6 +478,7 @@ class ChatViewModel @Inject constructor(
      * 3. 调用主对话模型（结合人格 + 记忆 + 视觉信息）
      */
     fun sendMessageWithImage(companionId: String, text: String, imageUri: Uri) {
+        if (_isLoading.value || activeSendJob?.isActive == true) return
         Logger.d("ChatViewModel", "========== 开始发送带图片的消息 ==========")
         Logger.d("ChatViewModel", "companionId: $companionId, text: $text, imageUri: $imageUri")
 
@@ -402,8 +487,9 @@ class ChatViewModel @Inject constructor(
             return
         }
 
-        // 使用 applicationScope，确保即使退出页面也能完成
-        applicationScope.launch(Dispatchers.Main + SupervisorJob()) {
+        activePartialResponse = ""
+        _sendState.value = ChatSendState.Sending(companionId)
+        activeSendJob = viewModelScope.launch(Dispatchers.Main) {
             _isLoading.value = true
             _error.value = null
 
@@ -413,6 +499,7 @@ class ChatViewModel @Inject constructor(
 
             try {
                 val userId = getUserId()
+                val resolvedPrompt = resolvePromptForRequest(userId, companionId)
                 val timestamp = System.currentTimeMillis()
                 val sessionId = "${userId}_${companionId}_${timestamp}"
 
@@ -437,7 +524,8 @@ class ChatViewModel @Inject constructor(
                     visionManager.analyzeImage(
                         imageUri = imageUri,
                         userText = text,
-                        conversationContext = conversationContext
+                        conversationContext = conversationContext,
+                        characterId = companionId
                     )
                 } catch (e: VisionError) {
                     // 视觉理解失败时，继续流程但不带分析结果
@@ -480,6 +568,7 @@ class ChatViewModel @Inject constructor(
                 // 情感分析
                 emotionalEngine.detectEmotion(enhancedUserMessage)
                 val currentEmotion = emotionalEngine.currentState.value
+                persistEmotionSnapshot(userId, companionId)
 
                 // 上下文管理
                 contextManager.setCurrentSession(userId, companionId)
@@ -493,48 +582,45 @@ class ChatViewModel @Inject constructor(
                 )
 
                 // 人格配置
-                val systemPrompt = appendMemory2Context(personalityManager.generateSystemPrompt(
+                val systemPrompt = appendTemperamentDirective(appendMemory2Context(personalityManager.generateSystemPrompt(
                     companionId = companionId,
                     userId = userId,
                     memoryContext = memoryContext
-                ), companionId, enhancedUserMessage)
+                ), userId, companionId, enhancedUserMessage), userId, companionId)
 
-                // API 参数
-                val personality = personalityManager.getCompanionConfig(companionId)
-                val apiParams = if (personality != null) {
-                    com.companion.cc.domain.manager.ApiParameters(
-                        temperature = personality.apiParameters.temperature.toDouble(),
-                        topP = personality.apiParameters.topP.toDouble(),
-                        frequencyPenalty = personality.apiParameters.frequencyPenalty.toDouble(),
-                        presencePenalty = personality.apiParameters.presencePenalty.toDouble(),
-                        maxTokens = personality.apiParameters.maxTokens
-                    )
-                } else {
-                    com.companion.cc.domain.manager.ApiParameters(
-                        temperature = 0.8, topP = 0.9, frequencyPenalty = 0.0,
-                        presencePenalty = 0.0, maxTokens = 500
-                    )
-                }
+                // API 参数来自本次请求刚解析的持久化配置
+                val apiParams = com.companion.cc.domain.manager.ApiParameters(
+                    temperature = resolvedPrompt.config.apiParameters.temperature.toDouble(),
+                    topP = resolvedPrompt.config.apiParameters.topP.toDouble(),
+                    frequencyPenalty = resolvedPrompt.config.apiParameters.frequencyPenalty.toDouble(),
+                    presencePenalty = resolvedPrompt.config.apiParameters.presencePenalty.toDouble(),
+                    maxTokens = resolvedPrompt.config.apiParameters.maxTokens
+                )
 
                 // 构建对话历史
                 val conversationHistory = buildSmartConversationHistory(_messages.value, maxMessages = 10)
 
                 // === 5. 流式调用主对话模型 ===
                 val assistantMessageId = "${System.currentTimeMillis()}_${java.util.UUID.randomUUID()}_assistant"
+                activeAssistantMessageId = assistantMessageId
                 var assistantContent = ""
+                activePartialResponse = ""
 
                 _latestStreamingMessageId.value = assistantMessageId
 
                 streamSendMessageUseCase(
                     systemPrompt = systemPrompt,
                     conversationHistory = conversationHistory,
-                    apiParams = apiParams
+                    apiParams = apiParams,
+                    userId = userId,
+                    characterId = companionId
                 ).catch { e ->
                     Logger.e("ChatViewModel", "API调用失败", e)
-                    _error.value = e.toChatError()
-                    _isLoading.value = false
+                    throw e
                 }.collect { chunk ->
                     assistantContent += chunk
+                    activePartialResponse = assistantContent
+                    _sendState.value = ChatSendState.Streaming(companionId, assistantContent)
 
                     val currentMessages = _messages.value.toMutableList()
                     val existingIndex = currentMessages.indexOfFirst { it.id == assistantMessageId }
@@ -612,12 +698,16 @@ class ChatViewModel @Inject constructor(
                 typingStateManager.stopTyping(companionId)
                 onlineStatusManager.setOffline(companionId)
                 _isLoading.value = false
+                _sendState.value = ChatSendState.Idle
+                activeSendJob = null
 
             } catch (e: CancellationException) {
                 _latestStreamingMessageId.value = null
                 typingStateManager.stopTyping(companionId)
                 onlineStatusManager.setOffline(companionId)
                 _isLoading.value = false
+                _sendState.value = ChatSendState.Cancelled(companionId, activePartialResponse)
+                activeSendJob = null
                 throw e
             } catch (e: Exception) {
                 Logger.e("ChatViewModel", "发送带图片消息失败", e)
@@ -626,6 +716,14 @@ class ChatViewModel @Inject constructor(
                 typingStateManager.stopTyping(companionId)
                 onlineStatusManager.setOffline(companionId)
                 _isLoading.value = false
+                _sendState.value = ChatSendState.Idle
+                activeSendJob = null
+                _sendState.value = ChatSendState.RetryableFailure(
+                    companionId = companionId,
+                    partialResponse = activePartialResponse,
+                    message = e.message ?: "发送失败"
+                )
+                activeSendJob = null
             }
         }
     }
@@ -646,7 +744,7 @@ class ChatViewModel @Inject constructor(
     }
 
     fun sendMessage(companionId: String, content: String) {
-        if (content.isBlank() || _isLoading.value) return
+        if (content.isBlank() || _isLoading.value || activeSendJob?.isActive == true) return
 
         // 检查网络状态
         if (!networkMonitor.isOnline()) {
@@ -663,8 +761,10 @@ class ChatViewModel @Inject constructor(
             return
         }
 
-        // 使用 applicationScope + SupervisorJob，确保即使退出页面也能继续执行
-        applicationScope.launch(Dispatchers.Main + SupervisorJob()) {
+        // 发送任务绑定 ViewModel 生命周期，离开页面时自动取消网络流
+        activePartialResponse = ""
+        _sendState.value = ChatSendState.Sending(companionId)
+        activeSendJob = viewModelScope.launch(Dispatchers.Main) {
             _isLoading.value = true
             _error.value = null
 
@@ -676,6 +776,8 @@ class ChatViewModel @Inject constructor(
 
             try {
                 val userId = getUserId()
+                lastFailedMessage = Triple(userId, companionId, content)
+                val resolvedPrompt = resolvePromptForRequest(userId, companionId)
                 val timestamp = System.currentTimeMillis()
                 val sessionId = "${userId}_${companionId}_${timestamp}"
 
@@ -690,6 +792,7 @@ class ChatViewModel @Inject constructor(
                 // === 2. 情感分析 ===
                 emotionalEngine.detectEmotion(content)
                 val currentEmotion = emotionalEngine.currentState.value
+                persistEmotionSnapshot(userId, companionId)
 
                 // === 3. 上下文管理 ===
                 contextManager.setCurrentSession(userId, companionId)
@@ -718,14 +821,12 @@ class ChatViewModel @Inject constructor(
                 )
 
                 // === 5. 人格配置 ===
-                val personality = personalityManager.getCompanionConfig(companionId)
-
                 // 使用完整记忆上下文生成 SystemPrompt
-                val systemPrompt = appendMemory2Context(personalityManager.generateSystemPrompt(
+                val systemPrompt = appendTemperamentDirective(appendMemory2Context(personalityManager.generateSystemPrompt(
                     companionId = companionId,
                     userId = userId,
                     memoryContext = memoryContext
-                ), companionId, content)
+                ), userId, companionId, content), userId, companionId)
 
                 // === 6. 思考链（可选，失败不影响主流程）===
                 try {
@@ -739,26 +840,14 @@ class ChatViewModel @Inject constructor(
                     Logger.e("ChatViewModel", "思考链失败", e)
                 }
 
-                // === 7. 获取API参数（使用人格配置）===
-                val apiParams = if (personality != null) {
-                    // 使用人格配置的 API 参数
-                    com.companion.cc.domain.manager.ApiParameters(
-                        temperature = personality.apiParameters.temperature.toDouble(),
-                        topP = personality.apiParameters.topP.toDouble(),
-                        frequencyPenalty = personality.apiParameters.frequencyPenalty.toDouble(),
-                        presencePenalty = personality.apiParameters.presencePenalty.toDouble(),
-                        maxTokens = personality.apiParameters.maxTokens
-                    )
-                } else {
-                    // 降级到默认参数
-                    com.companion.cc.domain.manager.ApiParameters(
-                        temperature = 0.8,
-                        topP = 0.9,
-                        frequencyPenalty = 0.0,
-                        presencePenalty = 0.0,
-                        maxTokens = 500
-                    )
-                }
+                // === 7. 获取API参数（来自本次请求解析的持久化配置）===
+                val apiParams = com.companion.cc.domain.manager.ApiParameters(
+                    temperature = resolvedPrompt.config.apiParameters.temperature.toDouble(),
+                    topP = resolvedPrompt.config.apiParameters.topP.toDouble(),
+                    frequencyPenalty = resolvedPrompt.config.apiParameters.frequencyPenalty.toDouble(),
+                    presencePenalty = resolvedPrompt.config.apiParameters.presencePenalty.toDouble(),
+                    maxTokens = resolvedPrompt.config.apiParameters.maxTokens
+                )
 
                 // === 8. 构建对话历史（智能筛选）===
                 val conversationHistory = buildSmartConversationHistory(
@@ -768,6 +857,7 @@ class ChatViewModel @Inject constructor(
 
                 // === 9. 调用API（流式）===
                 val assistantMessageId = "${System.currentTimeMillis()}_${java.util.UUID.randomUUID()}_assistant"
+                activeAssistantMessageId = assistantMessageId
                 var assistantContent = ""
 
                 // 设置为当前流式显示的消息（UI 据此播放逐字动画）
@@ -776,13 +866,16 @@ class ChatViewModel @Inject constructor(
                 streamSendMessageUseCase(
                     systemPrompt = systemPrompt,
                     conversationHistory = conversationHistory,
-                    apiParams = apiParams
+                    apiParams = apiParams,
+                    userId = userId,
+                    characterId = companionId
                 ).catch { e ->
                     Logger.e("ChatViewModel", "API调用失败: ${e.message}", e)
-                    _error.value = e.toChatError()
-                    _isLoading.value = false
+                    throw e
                 }.collect { chunk ->
                     assistantContent += chunk
+                    activePartialResponse = assistantContent
+                    _sendState.value = ChatSendState.Streaming(companionId, assistantContent)
 
                     // 实时更新消息列表
                     val currentMessages = _messages.value.toMutableList()
@@ -833,9 +926,13 @@ class ChatViewModel @Inject constructor(
 
                     // 清空标记并返回
                     _latestStreamingMessageId.value = null
+                    activeAssistantMessageId = null
+                    activePartialResponse = ""
                     typingStateManager.stopTyping(companionId)
                     onlineStatusManager.setOffline(companionId)
                     _isLoading.value = false
+                    _sendState.value = ChatSendState.Idle
+                    activeSendJob = null
                     return@launch
                 }
 
@@ -900,17 +997,22 @@ class ChatViewModel @Inject constructor(
                 }
 
                 // 移除正在回复标记
+                activeAssistantMessageId = null
+                activePartialResponse = ""
+                lastFailedMessage = null
+                _sendState.value = ChatSendState.Idle
                 typingStateManager.stopTyping(companionId)
                 onlineStatusManager.setOffline(companionId)  // 同步到全局状态
 
                 _isLoading.value = false
 
             } catch (e: CancellationException) {
-                // 协程取消（用户退出页面等），不记录为错误
                 _latestStreamingMessageId.value = null
                 typingStateManager.stopTyping(companionId)
                 onlineStatusManager.setOffline(companionId)
                 _isLoading.value = false
+                _sendState.value = ChatSendState.Cancelled(companionId, activePartialResponse)
+                activeSendJob = null
                 throw e
             } catch (e: Exception) {
                 Logger.e("ChatViewModel", "发送消息异常", e)
@@ -919,8 +1021,7 @@ class ChatViewModel @Inject constructor(
                 _latestStreamingMessageId.value = null
 
                 // 保存失败的消息，用于重试
-                val userId = getUserId()
-                lastFailedMessage = Triple(userId, companionId, content)
+                lastFailedMessage = Triple(userIdFlow.value, companionId, content)
 
                 // 使用类型化的错误处理
                 _error.value = e.toChatError()
@@ -930,6 +1031,12 @@ class ChatViewModel @Inject constructor(
                 onlineStatusManager.setOffline(companionId)
 
                 _isLoading.value = false
+                _sendState.value = ChatSendState.RetryableFailure(
+                    companionId = companionId,
+                    partialResponse = activePartialResponse,
+                    message = e.message ?: "发送失败"
+                )
+                activeSendJob = null
             }
         }
     }

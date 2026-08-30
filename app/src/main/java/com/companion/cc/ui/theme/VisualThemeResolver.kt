@@ -39,7 +39,7 @@ object VisualThemeResolver {
                 accent = accent,
                 contentPrimary = colors.onSurface,
                 contentSecondary = colors.onSurfaceVariant,
-                contentMuted = colors.onSurfaceVariant.copy(alpha = if (isDark) 0.72f else 0.68f),
+                contentMuted = colors.onSurfaceVariant.copy(alpha = if (isDark) 0.85f else 0.82f),  // 提高对比度 (原 0.72f/0.68f)
                 glass = glass,
                 status = statusColors(isDark),
                 chart = chartColors(isDark),
@@ -163,13 +163,19 @@ object VisualThemeResolver {
         val steady = effectTier == GlassEffectTier.STEADY
         val balanced = effectTier == GlassEffectTier.BALANCED
         val normalized = opacity.coerceIn(0.28f, 0.88f)
-        val baseFill = if (isDark) Color(0xFFFFFFFF) else Color(0xFFFFFFFF)  // 纯白色，依靠透明度控制
+        // 修复：深色模式使用深色玻璃，浅色模式使用白色玻璃
+        val baseFill = if (isDark) Color(0xFF2A2D3A) else Color(0xFFFFFFFF)
         val fillAlpha = when {
-            immersive -> 0.22f + normalized * 0.34f
-            balanced -> 0.38f + normalized * 0.26f
-            else -> 0.64f + normalized * 0.2f
+            immersive -> 0.65f + normalized * 0.25f  // 提高不透明度: 0.65-0.90 (原 0.22-0.56)
+            balanced -> 0.75f + normalized * 0.15f   // 提高不透明度: 0.75-0.90 (原 0.38-0.64)
+            else -> 0.85f + normalized * 0.10f       // 提高不透明度: 0.85-0.95 (原 0.64-0.84)
         }
-        val compactAlpha = 0.0f  // 完全透明，只保留边框
+        // 修复 compactFill 透明度：从完全透明改为根据效果级别设置
+        val compactAlpha = when {
+            immersive -> 0.72f + normalized * 0.18f  // 0.72-0.90 (原 0.0 完全透明)
+            balanced -> 0.80f + normalized * 0.12f   // 0.80-0.92
+            else -> 0.88f + normalized * 0.08f       // 0.88-0.96
+        }
         return GlassSurfaceSpec(
             fill = baseFill.copy(alpha = fillAlpha),
             strongFill = baseFill.copy(alpha = if (steady) 0.94f else 0.38f + normalized * 0.3f),
@@ -242,8 +248,7 @@ object VisualThemeResolver {
         )
     } else {
         VisualChartColors(
-            trend = Color(0xFF625CD2), affection = Color(0xFFC85277), trust = Color(0xFF625CD2),
-            interest = Color(0xFF8A6200), positive = Color(0xFF006D36), neutral = Color(0xFF005E99), negative = Color(0xFFBA1A1A)
+            trend = Color(0xFF625CD2), affection = Color(0xFFC85277), trust = Color(0xFF2F6F9F), interest = Color(0xFF8A6200), positive = Color(0xFF006D36), neutral = Color(0xFF005E99), negative = Color(0xFFBA1A1A)
         )
     }
 

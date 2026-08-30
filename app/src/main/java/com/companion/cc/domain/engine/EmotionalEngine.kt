@@ -1,7 +1,9 @@
 package com.companion.cc.domain.engine
 
 import com.companion.cc.domain.model.EmotionalState
+import com.companion.cc.domain.character.TemperamentProfile
 import com.companion.cc.domain.model.Mood
+import com.companion.cc.domain.model.Attitude
 import com.companion.cc.domain.model.MoodTransitions
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -33,6 +35,17 @@ class EmotionalEngine @Inject constructor() {
 
     private var currentKey: String = ""
 
+    // V9 造人：脾气参数（按 companionId 注册，未注册用默认档）
+    private val temperaments = mutableMapOf<String, TemperamentProfile>()
+
+    /** 注册/覆盖角色脾气（角色配置接入后由上层调用） */
+    fun setTemperament(companionId: String, profile: TemperamentProfile) {
+        temperaments[companionId] = profile
+    }
+
+    fun temperamentFor(companionId: String): TemperamentProfile =
+        temperaments[companionId] ?: TemperamentProfile.DEFAULT
+
     /**
      * 设置当前会话
      */
@@ -47,21 +60,10 @@ class EmotionalEngine @Inject constructor() {
     fun detectEmotion(message: String) {
         if (currentKey.isEmpty()) return
 
+        val temperament = temperamentFor(currentKey.substringAfter(':', ""))
         val sentiment = analyzeSentiment(message)
-        val currentState = _currentState.value
 
-        val newMood = calculateNewMood(currentState.mood, sentiment)
-        val newAffection = adjustAffection(currentState.affection, sentiment)
-        val newEnergy = adjustEnergy(currentState.energy)
-        val newStress = adjustStress(currentState.stress, sentiment)
-
-        val newState = EmotionalState(
-            mood = newMood,
-            energy = newEnergy,
-            affection = newAffection,
-            stress = newStress
-        )
-
+        val newState = evolve(_currentState.value, sentiment, message, temperament)
         emotionalStates[currentKey] = newState
         _currentState.value = newState
     }
@@ -91,35 +93,111 @@ class EmotionalEngine @Inject constructor() {
         companionId: String,
         userMessage: String
     ): EmotionalState {
-        val currentState = getEmotionalState(userId, companionId)
-
-        // 1. 分析消息情感
+        val temperament = temperamentFor(companionId)
         val sentiment = analyzeSentiment(userMessage)
 
-        // 2. 计算新的心情
-        val newMood = calculateNewMood(currentState.mood, sentiment)
+        val newState = evolve(getEmotionalState(userId, companionId), sentiment, userMessage, temperament)
+        emotionalStates[getKey(userId, companionId)] = newState
 
-        // 3. 更新好感度
-        val newAffection = adjustAffection(currentState.affection, sentiment)
+        return newState
+    }
 
-        // 4. 更新精力（随时间自然恢复）
-        val newEnergy = adjustEnergy(currentState.energy)
+    /**
+     * V9 造人：由一条用户消息演化内在状态（脾气调制情绪幅度 + 态度状态机）
+     */
+    private fun evolve(
+        current: EmotionalState,
+        sentiment: Float,
+        message: String,
+        temperament: TemperamentProfile
+    ): EmotionalState {
+        // 敏感度放大情绪波动（主要放大负面——气性）
+        val amp = 1f + (temperament.sensitivity - 0.5f) * 0.8f
+        val effective = if (sentiment < 0f) sentiment * amp else sentiment
 
-        // 5. 更新压力（根据对话强度）
-        val newStress = adjustStress(currentState.stress, sentiment)
+        val newMood = calculateNewMood(current.mood, effective)
+        var newAffection = adjustAffection(current.affection, effective)
+        val newEnergy = adjustEnergy(current.energy)
+        val newStress = adjustStress(current.stress, effective)
 
-        // 6. 创建新状态
-        val newState = EmotionalState(
+        val oldAttitude = current.attitude
+        val newAttitude = evolveAttitude(oldAttitude, effective, message, temperament)
+
+        // 和好：台阶被接住之后，好感比没吵过更亲一点
+        if (oldAttitude.isUpsetOrCold() && !newAttitude.isUpsetOrCold()) {
+            newAffection = (newAffection + 0.04f).coerceIn(0f, 1f)
+        }
+
+        return current.copy(
             mood = newMood,
             energy = newEnergy,
             affection = newAffection,
-            stress = newStress
+            stress = newStress,
+            attitude = newAttitude,
+            timestamp = System.currentTimeMillis()
         )
+    }
 
-        // 7. 保存状态
+    /**
+     * V9 造人：态度状态机。
+     * WARM/NEUTRAL ←→ UPSET（可被道歉/示好修复）；UPSET 被继续拱火 → COLD；
+     * COLD 只认真诚台阶，先松动回 UPSET，不直接和好。
+     */
+    private fun evolveAttitude(
+        current: Attitude,
+        sentiment: Float,
+        message: String,
+        temperament: TemperamentProfile
+    ): Attitude {
+        val apology = REPAIR_KEYWORDS.any { message.contains(it) }
+        // 敏感的人被点着的门槛更低
+        val provocation = -0.35f + temperament.sensitivity * 0.2f
+
+        return when (current) {
+            Attitude.WARM, Attitude.NEUTRAL -> when {
+                // 生不生气由敏感度决定；别扭度只决定进不进冷战、要哄几次
+                sentiment <= provocation -> Attitude.UPSET
+                sentiment > 0.45f -> Attitude.WARM
+                else -> current
+            }
+            Attitude.UPSET -> when {
+                (apology && sentiment >= -0.1f) || sentiment >= 0.3f ->
+                    if (temperament.stubbornness > 0.6f) Attitude.UPSET else Attitude.NEUTRAL
+                sentiment <= -0.2f && temperament.stubbornness >= 0.45f -> Attitude.COLD
+                else -> current
+            }
+            Attitude.COLD -> when {
+                (apology && sentiment >= 0f) || sentiment >= 0.15f + temperament.stubbornness * 0.2f -> Attitude.UPSET
+                else -> current
+            }
+        }
+    }
+
+    /**
+     * V9 造人：时间衰减——重启/隔天回来时调用。
+     * 压力向基线回落；闹别扭随气消速度自然软化；冷战很久之后也只是淡化成正常（伤过就是伤过）。
+     */
+    fun applyTimeDecay(userId: String, companionId: String): EmotionalState {
         val key = getKey(userId, companionId)
-        emotionalStates[key] = newState
+        val state = emotionalStates.getOrPut(key) { EmotionalState.default() }
+        val temperament = temperamentFor(companionId)
 
+        val elapsedHours = ((System.currentTimeMillis() - state.timestamp).coerceAtLeast(0L)) / 3_600_000f
+        if (elapsedHours < 0.25f) return state
+
+        val decayPerHour = 0.08f + temperament.grudgeDecay * 0.25f
+        val newStress = (state.stress - decayPerHour * elapsedHours).coerceAtLeast(0.3f)
+
+        val softenAfterMinutes = 45f + (1f - temperament.grudgeDecay) * 135f
+        val newAttitude = when {
+            state.attitude == Attitude.UPSET && elapsedHours * 60f >= softenAfterMinutes -> Attitude.NEUTRAL
+            state.attitude == Attitude.COLD && elapsedHours >= 48f -> Attitude.NEUTRAL
+            else -> state.attitude
+        }
+
+        val newState = state.copy(stress = newStress, attitude = newAttitude, timestamp = System.currentTimeMillis())
+        emotionalStates[key] = newState
+        if (currentKey == key) _currentState.value = newState
         return newState
     }
 
@@ -309,6 +387,11 @@ class EmotionalEngine @Inject constructor() {
      */
     fun getAllEmotionalStates(): Map<String, EmotionalState> {
         return emotionalStates.toMap()
+    }
+
+    companion object {
+        // 真诚台阶：道歉/服软/示好
+        private val REPAIR_KEYWORDS = listOf("对不起", "抱歉", "别生气", "原谅", "我错了", "哄哄", "消消气", "抱抱")
     }
 
     /**

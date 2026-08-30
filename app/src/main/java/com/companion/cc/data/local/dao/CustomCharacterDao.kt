@@ -31,6 +31,9 @@ interface CustomCharacterDao {
     @Update
     suspend fun update(character: CustomCharacterEntity)
 
+    @Query("DELETE FROM custom_characters WHERE id = :characterId AND userId = :userId")
+    suspend fun deleteForUser(characterId: String, userId: String): Int
+
     @Query("DELETE FROM custom_characters WHERE id = :characterId")
     suspend fun delete(characterId: String)
 

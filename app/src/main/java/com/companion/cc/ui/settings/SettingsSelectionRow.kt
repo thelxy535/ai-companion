@@ -1,6 +1,5 @@
 package com.companion.cc.ui.settings
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,6 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import com.companion.cc.ui.theme.tactileClickable
 import androidx.compose.ui.unit.dp
 
 @Composable
@@ -29,7 +29,7 @@ internal fun SettingsSelectionRow(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = 56.dp)
-            .clickable(role = Role.RadioButton, onClick = onClick)
+            .tactileClickable(role = Role.RadioButton, onClick = onClick)
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)

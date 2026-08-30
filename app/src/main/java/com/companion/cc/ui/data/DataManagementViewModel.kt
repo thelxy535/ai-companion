@@ -8,7 +8,13 @@ import com.companion.cc.data.local.SettingsManager
 import com.companion.cc.data.local.dao.MemoryDao
 import com.companion.cc.data.local.dao.MemoryNodeDao
 import com.companion.cc.data.local.dao.VectorMemoryDao
+import com.companion.cc.data.local.repository.MemoryCapsuleV2Transfer
+import com.companion.cc.data.local.repository.MemoryCapsuleV2Importer
 import com.companion.cc.domain.identity.CurrentUserProvider
+import com.companion.cc.domain.memory.MemoryScopeKey
+import com.companion.cc.domain.usecase.ExportDataUseCase
+import com.companion.cc.domain.usecase.ImportDataUseCase
+import com.companion.cc.domain.usecase.ImportResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,6 +27,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import java.io.File
 import javax.inject.Inject
+
+data class CapsuleExport(
+    val fileName: String,
+    val json: String
+)
 
 data class StorageInfo(
     val databaseSize: String = "计算中...",
@@ -37,7 +48,10 @@ class DataManagementViewModel @Inject constructor(
     private val memoryNodeDao: MemoryNodeDao,
     private val vectorMemoryDao: VectorMemoryDao,
     private val currentUserProvider: CurrentUserProvider,
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val capsuleTransfer: MemoryCapsuleV2Transfer,
+    private val exportDataUseCase: ExportDataUseCase,
+    private val importDataUseCase: ImportDataUseCase
 ) : ViewModel() {
     private var storageJob: Job? = null
 
@@ -46,6 +60,16 @@ class DataManagementViewModel @Inject constructor(
 
     private val _resultMessage = MutableStateFlow<String?>(null)
     val resultMessage: StateFlow<String?> = _resultMessage.asStateFlow()
+
+    private val _pendingCapsuleExport = MutableStateFlow<CapsuleExport?>(null)
+    val pendingCapsuleExport: StateFlow<CapsuleExport?> = _pendingCapsuleExport.asStateFlow()
+
+    private val _pendingDataExport = MutableStateFlow<CapsuleExport?>(null)
+    val pendingDataExport: StateFlow<CapsuleExport?> = _pendingDataExport.asStateFlow()
+
+    private val _lastCapsuleImportReport = MutableStateFlow<MemoryCapsuleV2Importer.Report?>(null)
+    val lastCapsuleImportReport: StateFlow<MemoryCapsuleV2Importer.Report?> =
+        _lastCapsuleImportReport.asStateFlow()
 
     private val _storageInfo = MutableStateFlow(StorageInfo())
     val storageInfo: StateFlow<StorageInfo> = _storageInfo.asStateFlow()
@@ -64,7 +88,7 @@ class DataManagementViewModel @Inject constructor(
             combine(
                 messageRepository.observeMessageCount(userId),
                 memoryDao.observeMemoryCount(userId),
-                memoryNodeDao.observeActiveCount(),
+                memoryNodeDao.observeActiveCount(userId),
                 vectorMemoryDao.observeCount(userId)
             ) { messageCount, legacyMemoryCount, nodeCount, vectorCount ->
                 val dbFile = context.getDatabasePath("cc_database")
@@ -97,45 +121,58 @@ class DataManagementViewModel @Inject constructor(
     }
 
     /**
-     * 导出数据
+     * 导出 Memory Capsule v2。文件写入由 UI 通过 SAF 完成。
      */
-    fun exportData(companionId: String) {
+    fun exportMemoryCapsule(companionId: String) {
         viewModelScope.launch {
             _isProcessing.value = true
             try {
                 val userId = currentUserProvider.requireUserId()
-                // 获取所有消息
-                val messages = messageRepository.getMessages(
-                    userId = userId,
-                    companionId = companionId,
-                    limit = 10000
-                ).first()
-
-                // 创建导出数据结构
-                val exportData = mapOf(
-                    "version" to "1.0",
-                    "exportTime" to System.currentTimeMillis(),
-                    "userId" to userId,
-                    "companionId" to companionId,
-                    "messages" to messages.map { msg ->
-                        mapOf(
-                            "id" to msg.id,
-                            "role" to msg.role.name,
-                            "content" to msg.content,
-                            "timestamp" to msg.timestamp
-                        )
-                    }
+                val scopeKey = MemoryScopeKey.forCharacter(userId, companionId)
+                val json = capsuleTransfer.exportCapsuleJson(scopeKey).getOrThrow()
+                _pendingCapsuleExport.value = CapsuleExport(
+                    fileName = "memory_capsule_${System.currentTimeMillis()}.json",
+                    json = json
                 )
+            } catch (e: Exception) {
+                android.util.Log.e("DataManagementVM", "Memory Capsule 导出失败", e)
+                _resultMessage.value = "记忆胶囊导出失败: ${e.message}"
+            } finally {
+                _isProcessing.value = false
+            }
+        }
+    }
 
-                // 序列化为 JSON
-                val json = com.google.gson.Gson().toJson(exportData)
+    /**
+     * 导入 Memory Capsule v2。调用方负责从 SAF 读取 JSON。
+     */
+    fun importMemoryCapsule(json: String, companionId: String) {
+        viewModelScope.launch {
+            _isProcessing.value = true
+            try {
+                val userId = currentUserProvider.requireUserId()
+                val scopeKey = MemoryScopeKey.forCharacter(userId, companionId)
+                val report = capsuleTransfer.importCapsuleJson(json, scopeKey).getOrThrow()
+                _lastCapsuleImportReport.value = report
+                _resultMessage.value = "记忆胶囊导入完成：新增 ${report.insertedNodes} 个记忆节点"
+            } catch (e: Exception) {
+                android.util.Log.e("DataManagementVM", "Memory Capsule 导入失败", e)
+                _resultMessage.value = "记忆胶囊导入失败: ${e.message}"
+            } finally {
+                _isProcessing.value = false
+            }
+        }
+    }
 
-                // 保存到文件
-                val fileName = "companion_export_${System.currentTimeMillis()}.json"
-                val file = File(context.getExternalFilesDir(null), fileName)
-                file.writeText(json)
-
-                _resultMessage.value = "数据已导出到: ${file.absolutePath}"
+    fun exportData() {
+        viewModelScope.launch {
+            _isProcessing.value = true
+            try {
+                val json = exportDataUseCase()
+                _pendingDataExport.value = CapsuleExport(
+                    fileName = "cc_switch_export_${System.currentTimeMillis()}.json",
+                    json = json
+                )
             } catch (e: Exception) {
                 android.util.Log.e("DataManagementVM", "导出失败", e)
                 _resultMessage.value = "导出失败: ${e.message}"
@@ -145,54 +182,19 @@ class DataManagementViewModel @Inject constructor(
         }
     }
 
-    /**
-     * 导入数据
-     */
+    /** 导入由 SAF 读取的 JSON 数据。 */
     fun importData(jsonData: String) {
         viewModelScope.launch {
             _isProcessing.value = true
             try {
-                // 解析 JSON
-                val gson = com.google.gson.Gson()
-                val data = gson.fromJson(jsonData, Map::class.java) as Map<*, *>
-
-                // 验证数据格式
-                if (data["version"] != "1.0") {
-                    _resultMessage.value = "不支持的数据版本"
-                    return@launch
-                }
-
-                // 获取消息列表
-                val messagesData = data["messages"] as? List<*>
-                if (messagesData == null) {
-                    _resultMessage.value = "数据格式错误：缺少消息列表"
-                    return@launch
-                }
-
-                // 转换为 Message 对象
-                val messages = messagesData.mapNotNull { msgData ->
-                    try {
-                        val msgMap = msgData as Map<*, *>
-                        com.companion.cc.domain.model.Message(
-                            id = msgMap["id"] as String,
-                            userId = data["userId"] as String,
-                            companionId = data["companionId"] as String,
-                            role = com.companion.cc.domain.model.MessageRole.valueOf(msgMap["role"] as String),
-                            content = msgMap["content"] as String,
-                            timestamp = (msgMap["timestamp"] as Number).toLong(),
-                            emotion = msgMap["emotion"] as? String,
-                            importance = (msgMap["importance"] as? Number)?.toInt() ?: 0
-                        )
-                    } catch (e: Exception) {
-                        android.util.Log.e("DataManagementVM", "解析消息失败", e)
-                        null
+                when (val result = importDataUseCase(jsonData)) {
+                    is ImportResult.Success -> {
+                        _resultMessage.value = "成功导入 ${result.messagesImported} 条消息"
+                    }
+                    is ImportResult.Error -> {
+                        _resultMessage.value = "导入失败: ${result.message}"
                     }
                 }
-
-                // 导入到数据库
-                messageRepository.saveMessages(messages)
-
-                _resultMessage.value = "成功导入 ${messages.size} 条消息"
             } catch (e: Exception) {
                 android.util.Log.e("DataManagementVM", "导入失败", e)
                 _resultMessage.value = "导入失败: ${e.message}"
@@ -209,8 +211,7 @@ class DataManagementViewModel @Inject constructor(
         viewModelScope.launch {
             _isProcessing.value = true
             try {
-                val prefs = context.getSharedPreferences("companion_settings", Context.MODE_PRIVATE)
-                prefs.edit().clear().apply()
+                settingsManager.resetUserPreferences()
                 _resultMessage.value = "设置已重置"
             } catch (e: Exception) {
                 android.util.Log.e("DataManagementVM", "重置设置失败", e)
@@ -221,8 +222,35 @@ class DataManagementViewModel @Inject constructor(
         }
     }
 
+    fun consumePendingCapsuleExport() {
+        _pendingCapsuleExport.value = null
+    }
+
+    fun consumePendingDataExport() {
+        _pendingDataExport.value = null
+    }
+
     fun clearResultMessage() {
         _resultMessage.value = null
+    }
+
+    companion object {
+        fun validateImportOwner(
+            payloadUserId: String,
+            currentUserId: String
+        ): Result<Unit> = runCatching {
+            val payload = payloadUserId.trim()
+            val current = currentUserId.trim()
+            require(payload.isNotBlank()) {
+                "导入数据缺少用户标识"
+            }
+            require(current.isNotBlank()) {
+                "当前用户标识为空"
+            }
+            require(payload == current) {
+                "导入数据属于其他用户"
+            }
+        }
     }
 
     private fun formatFileSize(size: Long): String {

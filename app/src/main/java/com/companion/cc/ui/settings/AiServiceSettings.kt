@@ -15,6 +15,11 @@ import com.companion.cc.domain.model.AIProvider
 import com.companion.cc.ui.components.UtilityDivider
 import com.companion.cc.ui.components.UtilitySection
 import com.companion.cc.ui.theme.LocalVisualTheme
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.IconButton
 
 @Composable
 internal fun ProviderStatusSection(
@@ -81,13 +86,23 @@ internal fun ApiConfigSection(
     onValidate: () -> Unit
 ) {
     UtilitySection(title = "API 配置", icon = Icons.Default.Key) {
+        var showKey by remember { mutableStateOf(false) }
         OutlinedTextField(
             value = apiKey,
             onValueChange = onApiKeyChange,
             modifier = Modifier.fillMaxWidth(),
             label = { Text("API Key") },
-            placeholder = { Text("sk-xxxxxxxxxxxxxx") },
+            placeholder = { Text("***") },
             leadingIcon = { Icon(Icons.Default.Key, contentDescription = null) },
+            trailingIcon = {
+                IconButton(onClick = { showKey = !showKey }) {
+                    Icon(
+                        if (showKey) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                        contentDescription = if (showKey) "隐藏" else "显示"
+                    )
+                }
+            },
+            visualTransformation = if (showKey) VisualTransformation.None else PasswordVisualTransformation(),
             singleLine = true
         )
         Spacer(Modifier.height(8.dp))
@@ -129,7 +144,6 @@ internal fun ApiConfigSection(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun ModelSelectionSection(
     selectedModel: String,
@@ -137,31 +151,66 @@ internal fun ModelSelectionSection(
     providerName: String?,
     onModelChange: (String) -> Unit
 ) {
-    var expanded by remember { mutableStateOf(false) }
+    var showModelDialog by remember { mutableStateOf(false) }
     UtilitySection(title = "模型", icon = Icons.Default.SmartToy) {
-        ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
-            OutlinedTextField(
-                value = selectedModel,
-                onValueChange = {},
-                modifier = Modifier.fillMaxWidth().menuAnchor(),
-                label = { Text("当前模型") },
-                readOnly = true,
-                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) }
-            )
-            ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                availableModels.forEach { model ->
-                    DropdownMenuItem(
-                        text = { Text(model) },
-                        onClick = { onModelChange(model); expanded = false }
-                    )
-                }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(enabled = availableModels.isNotEmpty()) { showModelDialog = true }
+                .padding(vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("当前模型", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    selectedModel,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium
+                )
             }
+            Icon(Icons.Default.ChevronRight, contentDescription = "选择模型")
         }
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(4.dp))
         Text(
             "共 ${availableModels.size} 个 ${providerName.orEmpty()} 模型可用",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+
+    if (showModelDialog) {
+        AlertDialog(
+            onDismissRequest = { showModelDialog = false },
+            title = { Text("选择模型") },
+            text = {
+                Column {
+                    availableModels.forEach { model ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onModelChange(model)
+                                    showModelDialog = false
+                                }
+                                .padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = selectedModel == model,
+                                onClick = {
+                                    onModelChange(model)
+                                    showModelDialog = false
+                                }
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(model)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showModelDialog = false }) { Text("取消") }
+            }
         )
     }
 }

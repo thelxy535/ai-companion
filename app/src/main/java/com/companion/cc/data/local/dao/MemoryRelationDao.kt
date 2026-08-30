@@ -16,6 +16,28 @@ interface MemoryRelationDao {
     @Query("SELECT * FROM memory_relations WHERE scopeKey = :scopeKey AND status = 'active' ORDER BY updatedAt DESC")
     fun observeActive(scopeKey: String): Flow<List<MemoryRelationEntity>>
 
+    @Query("DELETE FROM memory_relations WHERE scopeKey = :scopeKey")
+    suspend fun deleteByScope(scopeKey: String): Int
+
+    @Query("SELECT * FROM memory_relations WHERE scopeKey = :scopeKey ORDER BY updatedAt ASC, fromNodeId ASC, toNodeId ASC, relationType ASC")
+    suspend fun findAllInScope(scopeKey: String): List<MemoryRelationEntity>
+
+    @Query("SELECT * FROM memory_relations WHERE scopeKey = :scopeKey AND (fromNodeId = :nodeId OR toNodeId = :nodeId) ORDER BY updatedAt DESC")
+    suspend fun findForNodeInScopeIncludingArchived(scopeKey: String, nodeId: String): List<MemoryRelationEntity>
+
+    @Query(
+        "SELECT * FROM memory_relations " +
+            "WHERE scopeKey = :scopeKey AND fromNodeId = :fromNodeId " +
+            "AND toNodeId = :toNodeId AND relationType = :relationType LIMIT 1"
+    )
+    suspend fun findForKeyInScope(
+        scopeKey: String,
+        fromNodeId: String,
+        toNodeId: String,
+        relationType: String
+    ): MemoryRelationEntity?
+
+
     @Query("SELECT * FROM memory_relations WHERE fromNodeId = :nodeId OR toNodeId = :nodeId")
     suspend fun findForNode(nodeId: String): List<MemoryRelationEntity>
 

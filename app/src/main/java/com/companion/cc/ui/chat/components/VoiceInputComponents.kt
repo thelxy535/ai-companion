@@ -13,7 +13,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.companion.cc.ui.chat.typingDotMotionEnabled
+import com.companion.cc.ui.theme.LocalVisualTheme
 
 /**
  * 语音输入按钮
@@ -75,28 +76,40 @@ fun VoiceWaveAnimation(
     volumeLevel: Float,
     modifier: Modifier = Modifier
 ) {
-    // 脉冲动画
-    val infiniteTransition = rememberInfiniteTransition(label = "wave")
+    val motionEnabled = typingDotMotionEnabled(LocalVisualTheme.current.effectTier)
+    val infiniteTransition = if (motionEnabled) {
+        rememberInfiniteTransition(label = "wave")
+    } else {
+        null
+    }
 
-    val scale by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = 1.5f + (volumeLevel / 10f),
-        animationSpec = infiniteRepeatable(
-            animation = tween(1000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "scale"
-    )
+    val scale by if (infiniteTransition != null) {
+        infiniteTransition.animateFloat(
+            initialValue = 1f,
+            targetValue = 1.5f + (volumeLevel / 10f),
+            animationSpec = infiniteRepeatable(
+                animation = tween(1000, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "scale"
+        )
+    } else {
+        remember { mutableFloatStateOf(1f) }
+    }
 
-    val alpha by infiniteTransition.animateFloat(
-        initialValue = 0.3f,
-        targetValue = 0.1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "alpha"
-    )
+    val alpha by if (infiniteTransition != null) {
+        infiniteTransition.animateFloat(
+            initialValue = 0.3f,
+            targetValue = 0.1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(1000, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "alpha"
+        )
+    } else {
+        remember { mutableFloatStateOf(0.2f) }
+    }
 
     // 波纹圆圈
     Box(
@@ -151,22 +164,31 @@ fun TTSSpeakingIndicator(
             verticalAlignment = Alignment.CenterVertically
         ) {
             // 跳动的小圆点
+            val motionEnabled = typingDotMotionEnabled(LocalVisualTheme.current.effectTier)
             repeat(3) { index ->
-                val infiniteTransition = rememberInfiniteTransition(label = "dot_$index")
+                val infiniteTransition = if (motionEnabled) {
+                    rememberInfiniteTransition(label = "dot_$index")
+                } else {
+                    null
+                }
 
-                val offset by infiniteTransition.animateFloat(
-                    initialValue = 0f,
-                    targetValue = -8f,
-                    animationSpec = infiniteRepeatable(
-                        animation = tween(
-                            durationMillis = 600,
-                            delayMillis = index * 100,
-                            easing = FastOutSlowInEasing
+                val offset by if (infiniteTransition != null) {
+                    infiniteTransition.animateFloat(
+                        initialValue = 0f,
+                        targetValue = -8f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(
+                                durationMillis = 600,
+                                delayMillis = index * 100,
+                                easing = FastOutSlowInEasing
+                            ),
+                            repeatMode = RepeatMode.Reverse
                         ),
-                        repeatMode = RepeatMode.Reverse
-                    ),
-                    label = "offset"
-                )
+                        label = "offset"
+                    )
+                } else {
+                    remember { mutableFloatStateOf(0f) }
+                }
 
                 Box(
                     modifier = Modifier

@@ -1,18 +1,17 @@
 package com.companion.cc.ui.stats
 
-import androidx.compose.foundation.background
+import com.companion.cc.ui.designsystem.auroraScreenBackground
+import com.companion.cc.ui.theme.LocalVisualTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.Mood
 import androidx.compose.material.icons.filled.Psychology
@@ -20,29 +19,25 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Topic
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.companion.cc.ui.components.UtilityDivider
-import com.companion.cc.ui.components.UtilitySection
-import com.companion.cc.ui.theme.GlassSurface
+import com.companion.cc.ui.components.AdaptiveMetricGrid
+import com.companion.cc.ui.components.MetricGridItem
+import com.companion.cc.ui.components.SceneSection
+import com.companion.cc.ui.components.SceneTopBar
+import com.companion.cc.ui.components.SceneTopBarAction
 import com.companion.cc.ui.theme.LocalVisualTheme
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ImmersiveStatsScreen(
     companionId: String,
@@ -52,87 +47,81 @@ fun ImmersiveStatsScreen(
     val stats by viewModel.stats.collectAsState()
     val totalMemoryCount by viewModel.totalMemoryCount.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val usage by viewModel.usage.collectAsState()
 
     LaunchedEffect(companionId) {
         viewModel.loadStats(companionId)
     }
 
-    val accentColor = LocalVisualTheme.current.tokens.accent
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Transparent)
-    ) {
-        GlassSurface(
-            modifier = Modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(0.dp),
-            useStrongFill = true
-        ) {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = "${getCompanionName(companionId)}的统计",
-                        fontWeight = FontWeight.Bold
+    Scaffold(
+        modifier = Modifier.auroraScreenBackground(LocalVisualTheme.current.tokens.backdrop.isDark),
+        topBar = {
+            SceneTopBar(
+                title = { Text("${getCompanionName(companionId)}的统计", fontWeight = FontWeight.Bold) },
+                onNavigateBack = onNavigateBack,
+                actions = listOf(
+                    SceneTopBarAction(
+                        icon = Icons.Default.Refresh,
+                        contentDescription = "刷新",
+                        onClick = { viewModel.refreshStats(companionId) }
                     )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, "返回")
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { viewModel.refreshStats(companionId) }) {
-                        Icon(Icons.Default.Refresh, "刷新")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                )
             )
-        }
-
+        },
+        containerColor = androidx.compose.ui.graphics.Color.Transparent
+    ) { padding ->
         if (isLoading) {
             Box(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().padding(padding).navigationBarsPadding(),
                 contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator(color = accentColor)
-            }
+            ) { CircularProgressIndicator(color = LocalVisualTheme.current.tokens.accent) }
         } else {
             LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                modifier = Modifier.fillMaxSize().padding(padding).navigationBarsPadding(),
+                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(28.dp)
             ) {
                 item {
-                    UtilitySection(title = "概览", icon = Icons.Default.Insights) {
-                        MetricRow("总消息数", stats.totalMessages.toString())
-                        UtilityDivider()
-                        MetricRow("对话轮次", stats.conversationRounds.toString())
+                    SceneSection(title = "概览", icon = Icons.Default.Insights) {
+                        AdaptiveMetricGrid(listOf(
+                            MetricGridItem("总消息数", stats.totalMessages.toString(), Icons.Default.Insights),
+                            MetricGridItem("对话轮次", stats.conversationRounds.toString(), Icons.Default.Mood)
+                        ))
                     }
                 }
                 item {
-                    UtilitySection(title = "记忆", icon = Icons.Default.Psychology) {
-                        MetricRow("活动记忆", totalMemoryCount.toString())
-                        UtilityDivider()
-                        MetricRow("向量记忆", stats.vectorMemoryCount.toString())
+                    SceneSection(title = "模型用量", icon = Icons.Default.Insights) {
+                        AdaptiveMetricGrid(listOf(
+                            MetricGridItem("输入 Token", usage.inputTokens.toString(), Icons.Default.Insights),
+                            MetricGridItem("输出 Token", usage.outputTokens.toString(), Icons.Default.Insights),
+                            MetricGridItem("估算费用", String.format("%.6f", usage.estimatedCost), Icons.Default.Star)
+                        ))
                     }
                 }
                 item {
-                    UtilitySection(title = "话题", icon = Icons.Default.Topic) {
+                    SceneSection(title = "记忆", icon = Icons.Default.Psychology) {
+                        AdaptiveMetricGrid(listOf(
+                            MetricGridItem("活动记忆", totalMemoryCount.toString(), Icons.Default.Psychology),
+                            MetricGridItem("向量记忆", stats.vectorMemoryCount.toString(), Icons.Default.Psychology)
+                        ))
+                    }
+                }
+                item {
+                    SceneSection(title = "话题", icon = Icons.Default.Topic) {
                         if (stats.currentTopics.isEmpty()) {
-                            Text("暂无话题", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        stats.currentTopics.forEachIndexed { index, topic ->
-                            if (index > 0) UtilityDivider()
-                            Text(topic, style = MaterialTheme.typography.bodyLarge)
+                            Text("尚未形成可统计的话题", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else {
+                            stats.currentTopics.forEach { topic ->
+                                Text("•  $topic", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(vertical = 5.dp))
+                            }
                         }
                     }
                 }
                 item {
-                    UtilitySection(title = "情绪", icon = Icons.Default.Mood) {
-                        MetricRow("评分", String.format("%.1f", stats.emotionalScore))
+                    SceneSection(title = "情绪", icon = Icons.Default.Mood) {
+                        Text(String.format("%.1f", stats.emotionalScore), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
                         Text(
-                            text = when {
+                            when {
                                 stats.emotionalScore > 0.5f -> "整体情绪积极"
                                 stats.emotionalScore < -0.5f -> "整体情绪消极"
                                 else -> "情绪中性"
@@ -141,37 +130,25 @@ fun ImmersiveStatsScreen(
                         )
                     }
                 }
-                if (stats.topTraits.isNotEmpty()) {
-                    item {
-                        UtilitySection(title = "主要特质", icon = Icons.Default.Star) {
-                            stats.topTraits.forEachIndexed { index, trait ->
-                                if (index > 0) UtilityDivider()
-                                Text(trait, style = MaterialTheme.typography.bodyLarge)
+                item {
+                    SceneSection(title = "主要特质", icon = Icons.Default.Star) {
+                        if (stats.topTraits.isEmpty()) {
+                            Text("尚无足够对话生成特质摘要", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else {
+                            stats.topTraits.forEach { trait ->
+                                Text("•  $trait", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(vertical = 5.dp))
                             }
                         }
                     }
                 }
-                item { Spacer(modifier = Modifier.height(16.dp)) }
+                item { Spacer(Modifier.height(12.dp)) }
             }
         }
     }
 }
 
-@Composable
-private fun MetricRow(label: String, value: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, fontWeight = FontWeight.SemiBold)
-    }
-}
-
-private fun getCompanionName(companionId: String): String {
-    return when (companionId) {
-        "muse" -> "缪斯"
-        "xiaocan" -> "小璨"
-        else -> "伴侣"
-    }
+private fun getCompanionName(companionId: String): String = when (companionId) {
+    "muse" -> "缪斯"
+    "xiaocan" -> "小璨"
+    else -> "伴侣"
 }

@@ -118,7 +118,12 @@ fun Throwable.toChatError(): ChatError {
         is java.net.ConnectException -> ChatError.NetworkError("连接失败")
         is java.io.IOException -> ChatError.NetworkError("网络错误：${this.message}")
 
-        // Retrofit HTTP 错误
+        is StreamHttpException -> if (this.code == 429) {
+            ChatError.RateLimitError(this.retryAfterSeconds ?: 60)
+        } else {
+            ChatError.ApiError(this.code, this.message ?: "HTTP ${this.code}")
+        }
+
         is retrofit2.HttpException -> {
             val code = this.code()
             when (code) {

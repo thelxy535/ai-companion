@@ -16,6 +16,7 @@ import com.companion.cc.domain.model.SpeakingStyle
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -37,101 +38,37 @@ class PersonalityManager @Inject constructor(
     private val timeContextManager: TimeContextManager,
     private val eventTracker: EventTracker
 ) {
-    // 动态注册的自定义角色
-    private val customCompanions = mutableMapOf<String, CompanionPersonality>()
+    // Resolver 缓存的配置（由 ChatViewModel 在 setCharacter 时填充）
+    private val resolvedConfigs = ConcurrentHashMap<String, CompanionConfig>()
 
     /**
-     * 注册自定义角色
-     * 用于角色自定义功能
+     * 缓存 resolver 解析的配置
+     * 由 ChatViewModel.setCharacter() 调用
      */
-    fun registerCompanion(companion: CompanionPersonality) {
-        customCompanions[companion.id] = companion
-        android.util.Log.d("PersonalityManager", "注册自定义角色: ${companion.name} (${companion.id})")
+    fun cacheResolvedConfig(config: CompanionConfig) {
+        resolvedConfigs[config.id] = config
     }
 
     /**
-     * 移除自定义角色
+     * 移除缓存的配置
      */
-    fun removeCompanion(companionId: String) {
-        customCompanions.remove(companionId)
-        android.util.Log.d("PersonalityManager", "移除自定义角色: $companionId")
+    fun removeResolvedConfig(companionId: String) {
+        resolvedConfigs.remove(companionId)
     }
 
     /**
      * 获取伴侣配置
-     * 优先返回自定义角色，fallback 到内置角色
+     * 优先返回 resolver 缓存的配置，fallback 到配置文件加载
      *
      * @param companionId 伴侣ID
-     * @return 配置对象
+     * @return 配置对象，如果未找到返回 null
      */
     fun getCompanionConfig(companionId: String): CompanionConfig? {
-        // 如果是自定义角色，转换为 CompanionConfig
-        customCompanions[companionId]?.let { customCompanion ->
-            return convertToCompanionConfig(customCompanion)
-        }
+        // 1. 优先使用 resolver 缓存（由 ChatViewModel.setCharacter 填充）
+        resolvedConfigs[companionId]?.let { return it }
 
-        // 否则从配置文件加载内置角色
+        // 2. Fallback: 从配置文件加载内置角色
         return configLoader.getCompanionConfig(companionId)
-    }
-
-    /**
-     * 将 CompanionPersonality 转换为 CompanionConfig
-     */
-    private fun convertToCompanionConfig(companion: CompanionPersonality): CompanionConfig {
-        // 为自定义角色创建基础配置
-        return CompanionConfig(
-            id = companion.id,
-            name = companion.name,
-            emoji = "✨",
-            avatar = "",
-            enabled = true,
-            prompts = Prompts(
-                system = companion.systemPrompt,
-                greeting = listOf(companion.greeting),
-                farewell = listOf("再见"),
-                fallback = listOf("我不太明白你的意思，能再说一遍吗？")
-            ),
-            personality = PersonalityConfig(
-                coreTraits = companion.traits,
-                background = "",
-                speakingStyle = SpeakingStyle(
-                    tone = companion.responseStyle,
-                    vocabularyLevel = "日常",
-                    sentenceLength = "中等",
-                    useEmoji = true,
-                    useExclamation = true,
-                    formality = "随意"
-                ),
-                interests = emptyList(),
-                values = emptyList(),
-                relationship = Relationship(
-                    role = "陪伴者",
-                    distance = "适度",
-                    interactionStyle = "关怀式",
-                    addressUser = "你"
-                ),
-                behaviorPatterns = emptyList()
-            ),
-            emotionalModel = EmotionalModelConfig(
-                defaultMood = Mood.CALM,
-                moodStability = 0.7f,
-                energyRecoveryRate = 0.1f,
-                stressThreshold = 0.7f,
-                affectionGrowthRate = 0.05f,
-                moodTransitions = emptyMap()
-            ),
-            memoryPreferences = MemoryPreferences(
-                importanceThreshold = 0.5f,
-                summaryFrequency = "daily",
-                rememberTopics = emptyList(),
-                forgetTopics = emptyList()
-            ),
-            apiParameters = ApiParametersConfig(
-                temperature = companion.apiParameters["temperature"] as? Float ?: 0.8f,
-                topP = companion.apiParameters["top_p"] as? Float ?: 0.9f,
-                maxTokens = 2000
-            )
-        )
     }
 
     /**

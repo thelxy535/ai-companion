@@ -2,7 +2,6 @@ package com.companion.cc.ui.chat.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -14,7 +13,6 @@ import androidx.compose.ui.window.Dialog
 import com.companion.cc.domain.model.EmotionalState
 import com.companion.cc.domain.model.Mood
 import com.companion.cc.ui.chat.ConversationStats
-import com.companion.cc.ui.theme.GlassDialogSurface
 
 /**
  * 情感状态弹出对话框
@@ -26,8 +24,10 @@ fun EmotionalStatsDialog(
     onDismiss: () -> Unit
 ) {
     Dialog(onDismissRequest = onDismiss) {
-        GlassDialogSurface(
-            shape = RoundedCornerShape(16.dp)
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.large,
+            tonalElevation = 3.dp
         ) {
             Column(
                 modifier = Modifier

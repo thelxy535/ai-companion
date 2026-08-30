@@ -24,18 +24,7 @@ class ExportDataUseCase @Inject constructor(
         val baseUrl = settingsManager.baseUrlFlow.first()
         val model = settingsManager.modelFlow.first()
 
-        // 获取所有消息
-        val allMessages = mutableListOf<Message>()
-
-        // 获取小璨的消息
-        messageRepository.getMessages(userId, "xiaocan", limit = 10000)
-            .first()
-            .let { allMessages.addAll(it) }
-
-        // 获取缪斯的消息
-        messageRepository.getMessages(userId, "muse", limit = 10000)
-            .first()
-            .let { allMessages.addAll(it) }
+        val allMessages = messageRepository.getAllMessages(userId).first()
 
         val exportData = ExportData(
             version = "1.0",

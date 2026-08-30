@@ -3,17 +3,27 @@ package com.companion.cc.data.local
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.companion.cc.util.EncryptionHelper
 import com.companion.cc.util.Logger
+import com.companion.cc.domain.capability.CapabilityFlags
+import com.companion.cc.domain.capability.CapabilityScope
+import com.companion.cc.domain.usage.UsageRecord
+import com.companion.cc.domain.usage.UsageSummary
+import com.companion.cc.domain.usage.UsageCostCalculator
+import com.companion.cc.ui.theme.TactileIntensityPreference
+import com.companion.cc.ui.theme.TactileIntensityPreferenceCodec
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.flow.first
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
@@ -22,8 +32,21 @@ class SettingsManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val encryptionHelper: EncryptionHelper
 ) {
-    private companion object {
+    companion object {
         const val ENCRYPTED_VALUE_PREFIX = "keystore:"
+            private val NOTIFICATIONS_ENABLED_KEY = booleanPreferencesKey("notifications_enabled")
+
+            /**
+             * V7 设置页通知开关（同步读取，供通知发送方门控）。
+             * DataStore 实例与 SettingsManager 相同（"settings" 文件），超时兜底返回 true。
+             */
+            fun isNotificationPrefEnabled(context: Context): Boolean = try {
+                kotlinx.coroutines.runBlocking {
+                    kotlinx.coroutines.withTimeoutOrNull(500) {
+                        context.dataStore.data.first()[NOTIFICATIONS_ENABLED_KEY] ?: true
+                    } ?: true
+                }
+            } catch (e: Exception) { true }
     }
 
     private object Keys {
@@ -37,6 +60,9 @@ class SettingsManager @Inject constructor(
         val INSTALLATION_ID = stringPreferencesKey("installation_id")
         val THEME_MODE = stringPreferencesKey("theme_mode")  // 主题模式: "system", "light", "dark"
         val FONT_SIZE = stringPreferencesKey("font_size")  // 字体大小: "small", "medium", "large", "xlarge"
+        val TACTILE_INTENSITY = stringPreferencesKey("tactile_intensity")
+        val MATERIAL_STYLE = stringPreferencesKey("material_style")
+        val NOTIFICATIONS_ENABLED = booleanPreferencesKey("notifications_enabled")
         val VISUAL_CUSTOMIZATION = stringPreferencesKey("visual_customization")
         val USER_AVATAR = stringPreferencesKey("user_avatar")  // 用户头像 URL
         val COMPANION_AVATAR_PREFIX = "companion_avatar_"  // AI 伴侣头像前缀
@@ -121,13 +147,78 @@ class SettingsManager @Inject constructor(
         preferences[Keys.THEME_MODE] ?: "system"  // 默认跟随系统
     }
 
+    val materialStyleFlow: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[Keys.MATERIAL_STYLE] ?: "GLASS"  // V7 默认玻璃
+    }
+
     val fontSizeFlow: Flow<String> = context.dataStore.data.map { preferences ->
         preferences[Keys.FONT_SIZE] ?: "medium"  // 默认中等
+    }
+
+    // V7 设置页通知开关（持久化偏好，独立于系统运行时授权）
+    val notificationsEnabledFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[Keys.NOTIFICATIONS_ENABLED] ?: true
+    }
+
+    val tactileIntensityFlow: Flow<TactileIntensityPreference> = context.dataStore.data.map { preferences ->
+        TactileIntensityPreferenceCodec.fromStoredValue(preferences[Keys.TACTILE_INTENSITY])
     }
 
     /** Serialized appearance settings owned by the visual customization manager. */
     val visualCustomizationFlow: Flow<String?> = context.dataStore.data.map { preferences ->
         preferences[Keys.VISUAL_CUSTOMIZATION]
+    }
+
+    /** Serialized appearance settings owned by the visual customization manager. */
+    fun usageSummaryFlow(userId: String, characterId: String): Flow<UsageSummary> =
+        context.dataStore.data.map { preferences ->
+            val scope = "usage:${userId}:${characterId}"
+            UsageSummary(
+                inputTokens = preferences[longPreferencesKey("$scope:input")] ?: 0L,
+                outputTokens = preferences[longPreferencesKey("$scope:output")] ?: 0L,
+                estimatedCost = (preferences[longPreferencesKey("$scope:costMicros")] ?: 0L) / 1_000_000.0
+            )
+        }
+
+    suspend fun recordUsage(record: UsageRecord) {
+        val scope = "usage:${record.userId}:${record.characterId}"
+        val costMicros = (UsageCostCalculator.cost(record) * 1_000_000.0).toLong()
+        context.dataStore.edit { preferences ->
+            val inputKey = longPreferencesKey("$scope:input")
+            val outputKey = longPreferencesKey("$scope:output")
+            val costKey = longPreferencesKey("$scope:costMicros")
+            preferences[inputKey] = (preferences[inputKey] ?: 0L) + record.inputTokens
+            preferences[outputKey] = (preferences[outputKey] ?: 0L) + record.outputTokens
+            preferences[costKey] = (preferences[costKey] ?: 0L) + costMicros
+        }
+    }
+    fun capabilityFlagsFlow(userId: String, characterId: String): Flow<CapabilityFlags> =
+        context.dataStore.data.map { preferences ->
+            val scope = CapabilityScope.key(userId, characterId)
+            CapabilityFlags(
+                image = preferences[booleanPreferencesKey("$scope:image")] ?: false,
+                video = preferences[booleanPreferencesKey("$scope:video")] ?: false,
+                voice = preferences[booleanPreferencesKey("$scope:voice")] ?: false,
+                vision = preferences[booleanPreferencesKey("$scope:vision")] ?: false,
+                time = preferences[booleanPreferencesKey("$scope:time")] ?: false,
+                email = preferences[booleanPreferencesKey("$scope:email")] ?: false
+            )
+        }
+
+    suspend fun saveCapabilityFlags(
+        userId: String,
+        characterId: String,
+        flags: CapabilityFlags
+    ) {
+        val scope = CapabilityScope.key(userId, characterId)
+        context.dataStore.edit { preferences ->
+            preferences[booleanPreferencesKey("$scope:image")] = flags.image
+            preferences[booleanPreferencesKey("$scope:video")] = flags.video
+            preferences[booleanPreferencesKey("$scope:voice")] = flags.voice
+            preferences[booleanPreferencesKey("$scope:vision")] = flags.vision
+            preferences[booleanPreferencesKey("$scope:time")] = flags.time
+            preferences[booleanPreferencesKey("$scope:email")] = flags.email
+        }
     }
 
     private fun generateUserId(): String {
@@ -211,10 +302,39 @@ class SettingsManager @Inject constructor(
         }
     }
 
+    suspend fun saveMaterialStyle(style: String) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.MATERIAL_STYLE] = style
+            Logger.d("SettingsManager", "材质风格已保存: $style")
+        }
+    }
+
+    // V9 造人：TA 的内在状态快照（scopeKey = "userId:companionId"），重启不失忆
+    suspend fun saveEmotionSnapshot(scopeKey: String, snapshot: String) {
+        context.dataStore.edit { preferences ->
+            preferences[stringPreferencesKey("emotion_$scopeKey")] = snapshot
+        }
+    }
+
+    suspend fun loadEmotionSnapshot(scopeKey: String): String? =
+        context.dataStore.data.map { it[stringPreferencesKey("emotion_$scopeKey")] }.first()
+
+    suspend fun saveNotificationsEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.NOTIFICATIONS_ENABLED] = enabled
+        }
+    }
+
     suspend fun saveFontSize(size: String) {
         context.dataStore.edit { preferences ->
             preferences[Keys.FONT_SIZE] = size
             Logger.d("SettingsManager", "字体大小已保存: $size")
+        }
+    }
+
+    suspend fun saveTactileIntensity(preference: TactileIntensityPreference) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.TACTILE_INTENSITY] = TactileIntensityPreferenceCodec.toStoredValue(preference)
         }
     }
 
@@ -271,6 +391,17 @@ class SettingsManager @Inject constructor(
                 preferences.remove(key)
                 Logger.d("SettingsManager", "伴侣 $companionId 头像已清除")
             }
+        }
+    }
+
+    /** Reset user preferences without changing the stable local identity. */
+    suspend fun resetUserPreferences() {
+        context.dataStore.edit { preferences ->
+            val userId = preferences[Keys.USER_ID]
+            val installationId = preferences[Keys.INSTALLATION_ID]
+            preferences.clear()
+            userId?.let { preferences[Keys.USER_ID] = it }
+            installationId?.let { preferences[Keys.INSTALLATION_ID] = it }
         }
     }
 

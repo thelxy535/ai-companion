@@ -58,6 +58,25 @@ class CompanionConfigLoader @Inject constructor(
     }
 
     /**
+     * 根据ID获取伴侣配置，但不使用默认配置兜底。
+     *
+     * 请求级角色解析必须区分“角色不存在”和“加载失败后的默认角色”。
+     */
+    fun getCompanionConfigStrict(companionId: String): CompanionConfig? {
+        return try {
+            val jsonString = context.assets.open("companions.json")
+                .bufferedReader()
+                .use { it.readText() }
+            gson.fromJson(jsonString, CompanionsConfig::class.java)
+                .companions
+                .find { it.id == companionId }
+        } catch (e: Exception) {
+            android.util.Log.e("CompanionConfigLoader", "严格加载配置失败", e)
+            null
+        }
+    }
+
+    /**
      * 根据ID获取伴侣配置
      *
      * @param companionId 伴侣ID

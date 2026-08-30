@@ -34,8 +34,17 @@ fun SplashScreen(
     onNavigateToHome: () -> Unit
 ) {
     var animationPhase by remember { mutableIntStateOf(0) }
+    val visualTheme = LocalVisualTheme.current
+    val backgroundColors = listOf(
+        visualTheme.tokens.backdrop.baseStart,
+        visualTheme.tokens.backdrop.baseEnd
+    )
 
     LaunchedEffect(Unit) {
+        if (splashDurationMillis(visualTheme.effectTier) == 0L) {
+            onNavigateToHome()
+            return@LaunchedEffect
+        }
         // 阶段1: 淡入 (0-300ms)
         animationPhase = 1
         delay(300)
@@ -51,12 +60,6 @@ fun SplashScreen(
         // 进入首页
         onNavigateToHome()
     }
-
-    val visualTheme = LocalVisualTheme.current
-    val backgroundColors = listOf(
-        visualTheme.tokens.backdrop.baseStart,
-        visualTheme.tokens.backdrop.baseEnd
-    )
 
     Box(
         modifier = Modifier

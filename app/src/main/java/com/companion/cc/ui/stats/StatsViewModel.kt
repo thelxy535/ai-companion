@@ -11,6 +11,8 @@ import com.companion.cc.domain.repository.MessageRepository
 import com.companion.cc.data.local.SettingsManager
 import com.companion.cc.ui.chat.ConversationStats
 import com.companion.cc.domain.identity.CurrentUserProvider
+import com.companion.cc.domain.memory.MemoryScopeKey
+import com.companion.cc.domain.usage.UsageSummary
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -37,6 +39,9 @@ class StatsViewModel @Inject constructor(
     private val _stats = MutableStateFlow(ConversationStats())
     val stats: StateFlow<ConversationStats> = _stats.asStateFlow()
 
+    private val _usage = MutableStateFlow(UsageSummary())
+    val usage: StateFlow<UsageSummary> = _usage.asStateFlow()
+
     private val _emotionalHistory = MutableStateFlow<List<EmotionalState>>(emptyList())
     val emotionalHistory: StateFlow<List<EmotionalState>> = _emotionalHistory.asStateFlow()
 
@@ -52,10 +57,17 @@ class StatsViewModel @Inject constructor(
             _isLoading.value = true
             try {
                 val userId = currentUserProvider.requireUserId()
+                launch {
+                    runCatching { settingsManager.usageSummaryFlow(userId, companionId) }
+                        .getOrNull()
+                        ?.collectLatest { _usage.value = it }
+                }
                 combine(
                     messageRepository.getMessages(userId, companionId, limit = 1000),
                     memoryDao.observeMemoryCount(userId),
-                    memoryNodeDao.observeFiltered("companion:$companionId"),
+                    memoryNodeDao.observeFiltered(
+                        MemoryScopeKey.forCharacter(userId, companionId)
+                    ),
                     vectorMemoryDao.observeCount(userId, companionId)
                 ) { messages, legacyCount, nodes, vectorCount ->
                     StatsSnapshot(messages, legacyCount + nodes.size, vectorCount)

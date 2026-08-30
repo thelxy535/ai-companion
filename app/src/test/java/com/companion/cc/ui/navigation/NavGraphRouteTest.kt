@@ -5,6 +5,13 @@ import org.junit.Test
 
 class NavGraphRouteTest {
     @Test
+    fun `memory detail route preserves companion id`() {
+        assertEquals(
+            "memory_detail/node-1?companionId=xiaocan",
+            Screen.MemoryDetail.createRoute("xiaocan", "node-1")
+        )
+    }
+    @Test
     fun `menu routes preserve companion id arguments`() {
         val companionId = "xiaocan"
         assertEquals("chat/xiaocan", Screen.Chat.createRoute(companionId))
@@ -17,6 +24,5 @@ class NavGraphRouteTest {
         assertEquals("favorites/xiaocan", Screen.Favorites.createRoute(companionId))
         assertEquals("custom_chat/custom-1", Screen.CustomCharacterChat.createRoute("custom-1"))
         assertEquals("character_edit/custom-1", Screen.CharacterEdit.createRoute("custom-1"))
-        assertEquals("memory_detail/node-1", Screen.MemoryDetail.createRoute("node-1"))
     }
 }

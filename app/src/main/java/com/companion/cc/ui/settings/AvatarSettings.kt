@@ -1,14 +1,13 @@
 package com.companion.cc.ui.settings
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
@@ -21,9 +20,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
-import com.companion.cc.ui.theme.GlassDialogSurface
+import com.companion.cc.ui.components.Avatar
+import com.companion.cc.ui.theme.tactileClickable
 
 /**
  * 头像设置对话框
@@ -59,65 +58,67 @@ fun AvatarSettingsDialog(
         }
     }
 
-    Dialog(onDismissRequest = onDismiss) {
-        GlassDialogSurface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.large
+    fun launchCamera() {
+        val file = java.io.File(context.cacheDir, "avatar_${System.currentTimeMillis()}.jpg")
+        photoUri = androidx.core.content.FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            file
+        )
+        takePictureLauncher.launch(photoUri)
+    }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) launchCamera()
+    }
+
+    fun startCamera() {
+        if (androidx.core.content.ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.CAMERA
+            ) == PackageManager.PERMISSION_GRANTED
         ) {
-            Column(
-                modifier = Modifier.padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+            launchCamera()
+        } else {
+            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                // 标题栏
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "关闭")
-                    }
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, contentDescription = "关闭")
                 }
+            }
+        },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Avatar(
+                    avatarUrl = currentAvatarUrl,
+                    emoji = null,
+                    size = 120.dp,
+                    backgroundColor = MaterialTheme.colorScheme.primaryContainer
+                )
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // 当前头像预览
-                Box(
-                    modifier = Modifier.size(120.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (currentAvatarUrl != null) {
-                        AsyncImage(
-                            model = currentAvatarUrl,
-                            contentDescription = "当前头像",
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .clip(CircleShape),
-                            contentScale = ContentScale.Crop
-                        )
-                    } else {
-                        Icon(
-                            imageVector = Icons.Default.AccountCircle,
-                            contentDescription = "默认头像",
-                            modifier = Modifier.fillMaxSize(),
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // 操作按钮
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // 从相册选择
                     Button(
                         onClick = {
                             imagePickerLauncher.launch(
@@ -131,18 +132,11 @@ fun AvatarSettingsDialog(
                         Text("相册")
                     }
 
-                    // 拍照
                     Button(
-                        onClick = {
-                            // 创建临时 URI
-                            val file = java.io.File(context.cacheDir, "avatar_${System.currentTimeMillis()}.jpg")
-                            photoUri = androidx.core.content.FileProvider.getUriForFile(
-                                context,
-                                "${context.packageName}.fileprovider",
-                                file
-                            )
-                            takePictureLauncher.launch(photoUri)
-                        },
+                        onClick = ::startCamera,
+                        enabled = context.packageManager.hasSystemFeature(
+                            PackageManager.FEATURE_CAMERA_ANY
+                        ),
                         modifier = Modifier.weight(1f)
                     ) {
                         Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -163,18 +157,18 @@ fun AvatarSettingsDialog(
                         Text("清除头像")
                     }
                 }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                TextButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("取消")
-                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("取消")
             }
         }
-    }
+    )
 }
 
 /**
@@ -192,32 +186,16 @@ fun AvatarSettingItem(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 64.dp)
-            .clickable(onClick = onClick)
+            .tactileClickable(onClick = onClick)
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier.size(48.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            if (avatarUrl != null) {
-                AsyncImage(
-                    model = avatarUrl,
-                    contentDescription = title,
-                    modifier = Modifier.fillMaxSize().clip(CircleShape),
-                    contentScale = ContentScale.Crop
-                )
-            } else if (defaultEmoji != null) {
-                Text(defaultEmoji, style = MaterialTheme.typography.headlineMedium)
-            } else {
-                Icon(
-                    imageVector = Icons.Default.AccountCircle,
-                    contentDescription = title,
-                    modifier = Modifier.fillMaxSize(),
-                    tint = MaterialTheme.colorScheme.primary
-                )
-            }
-        }
+        Avatar(
+            avatarUrl = avatarUrl,
+            emoji = defaultEmoji,
+            size = 48.dp,
+            backgroundColor = MaterialTheme.colorScheme.primaryContainer
+        )
 
         Spacer(modifier = Modifier.width(16.dp))
         Column(modifier = Modifier.weight(1f)) {

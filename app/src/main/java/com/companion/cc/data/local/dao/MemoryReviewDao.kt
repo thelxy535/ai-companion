@@ -16,6 +16,18 @@ interface MemoryReviewDao {
     @Query("SELECT * FROM memory_reviews WHERE scopeKey = :scopeKey AND status IN ('pending', 'conflict') ORDER BY createdAt DESC")
     fun observePending(scopeKey: String): Flow<List<MemoryReviewEntity>>
 
+    @Query("DELETE FROM memory_reviews WHERE scopeKey = :scopeKey")
+    suspend fun deleteByScope(scopeKey: String): Int
+
+    @Query("SELECT * FROM memory_reviews WHERE scopeKey = :scopeKey ORDER BY createdAt ASC, id ASC")
+    suspend fun findAllInScope(scopeKey: String): List<MemoryReviewEntity>
+
+    @Query("SELECT * FROM memory_reviews WHERE scopeKey = :scopeKey AND proposalHash = :proposalHash LIMIT 1")
+    suspend fun findByProposalHash(scopeKey: String, proposalHash: String): MemoryReviewEntity?
+
+    @Query("SELECT * FROM memory_reviews WHERE scopeKey = :scopeKey AND id = :id LIMIT 1")
+    suspend fun findByIdForScope(scopeKey: String, id: String): MemoryReviewEntity?
+
     @Query("SELECT * FROM memory_reviews WHERE id = :id")
     suspend fun findById(id: String): MemoryReviewEntity?
 

@@ -5,7 +5,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -24,7 +23,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.companion.cc.domain.model.Mood
-import com.companion.cc.ui.theme.GlassDialogSurface
 import com.companion.cc.ui.theme.LocalVisualTheme
 import java.text.SimpleDateFormat
 import java.util.*
@@ -40,8 +38,10 @@ fun EmotionalTimelineDialog(
 ) {
     val chart = LocalVisualTheme.current.tokens.chart
     Dialog(onDismissRequest = onDismiss) {
-        GlassDialogSurface(
-            shape = RoundedCornerShape(24.dp)
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.large,
+            tonalElevation = 3.dp
         ) {
             Column(
                 modifier = Modifier

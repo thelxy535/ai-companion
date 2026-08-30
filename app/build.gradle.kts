@@ -1,8 +1,13 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.serialization")
     id("com.google.devtools.ksp")
     id("com.google.dagger.hilt.android")
+}
+
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 android {
@@ -13,8 +18,8 @@ android {
         applicationId = "com.companion.cc"
         minSdk = 26
         targetSdk = 34
-        versionCode = 11
-        versionName = "2.1.0-beta.10"
+        versionCode = 14
+        versionName = "8.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField(
@@ -94,12 +99,20 @@ dependencies {
     implementation("com.google.dagger:hilt-android:2.48")
     ksp("com.google.dagger:hilt-compiler:2.48")
     implementation("androidx.hilt:hilt-navigation-compose:1.1.0")
+    implementation("androidx.hilt:hilt-work:1.1.0")
+    ksp("androidx.hilt:hilt-compiler:1.1.0")
+
+    // WorkManager
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
 
     // Room
     val roomVersion = "2.6.1"
     implementation("androidx.room:room-runtime:$roomVersion")
     implementation("androidx.room:room-ktx:$roomVersion")
     ksp("androidx.room:room-compiler:$roomVersion")
+
+    // Room migration verification
+    androidTestImplementation("androidx.room:room-testing:$roomVersion")
 
     // Retrofit
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
@@ -137,7 +150,7 @@ dependencies {
     testImplementation("org.mockito:mockito-inline:5.2.0")
     testImplementation("org.mockito.kotlin:mockito-kotlin:5.0.0")
     testImplementation("org.robolectric:robolectric:4.10.3")
-    testImplementation("androidx.arch.core:core-testing:2.2.0")
+    testImplementation("androidx.work:work-testing:2.9.0")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")

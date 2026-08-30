@@ -6,11 +6,16 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.core.net.toUri
 import com.companion.cc.domain.model.VisionAnalysis
+import com.companion.cc.domain.capability.Capability
+import com.companion.cc.domain.capability.CapabilityGate
+import com.companion.cc.domain.identity.CurrentUserProvider
+import com.companion.cc.data.local.SettingsManager
 import com.companion.cc.domain.model.VisionError
 import com.companion.cc.domain.vision.VisionProvider
 import com.companion.cc.util.Logger
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
@@ -31,7 +36,9 @@ import javax.inject.Singleton
 @Singleton
 class VisionManager @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val visionProvider: VisionProvider  // 通过 Hilt 注入，可在 Module 中切换具体实现
+    private val visionProvider: VisionProvider,
+    private val settingsManager: SettingsManager,
+    private val currentUserProvider: CurrentUserProvider
 ) {
     // 视觉理解结果缓存
     // Key: imageHash + userText 的 hash
@@ -60,9 +67,20 @@ class VisionManager @Inject constructor(
     suspend fun analyzeImage(
         imageUri: Uri,
         userText: String,
-        conversationContext: List<String> = emptyList()
+        conversationContext: List<String> = emptyList(),
+        characterId: String? = null
     ): VisionAnalysis = withContext(Dispatchers.IO) {
         Logger.d("VisionManager", "========== 开始图片分析 ==========")
+
+        // Capability is checked before provider availability or image processing.
+        val userId = currentUserProvider.requireUserId()
+        val scopedCharacterId = requireNotNull(characterId) { "视觉请求缺少角色 scope" }
+        val flags = settingsManager.capabilityFlagsFlow(userId, scopedCharacterId).first()
+        try {
+            CapabilityGate.requireAllowed(Capability.VISION, flags)
+        } catch (e: UnsupportedOperationException) {
+            throw VisionError.ApiError(e.message ?: "当前角色未启用视觉能力")
+        }
 
         // 1. 检查 Provider 是否可用
         val isAvailable = visionProvider.isAvailable()

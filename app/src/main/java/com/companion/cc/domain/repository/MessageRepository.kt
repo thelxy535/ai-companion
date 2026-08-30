@@ -11,8 +11,9 @@ interface MessageRepository {
         offset: Int = 0
     ): Flow<List<Message>>
 
-    suspend fun saveMessage(message: Message)
+    fun getAllMessages(userId: String): Flow<List<Message>>
 
+    suspend fun saveMessage(message: Message)
     suspend fun saveMessages(messages: List<Message>)
 
     suspend fun getMessageCount(userId: String): Int
@@ -22,6 +23,14 @@ interface MessageRepository {
     suspend fun deleteAllMessages(userId: String)
 
     suspend fun deleteMessage(messageId: String)
+
+    /**
+     * 删除指定角色的所有消息
+     *
+     * @param userId 用户ID
+     * @param companionId 角色ID
+     */
+    suspend fun deleteMessagesByCompanion(userId: String, companionId: String)
 
     suspend fun updateMessageImportance(messageId: String, importance: Int)
 

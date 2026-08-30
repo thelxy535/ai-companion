@@ -14,6 +14,7 @@ import com.companion.cc.domain.model.ProviderConfig
 import com.companion.cc.domain.model.VisionServiceMode
 import com.companion.cc.domain.model.VisualCustomization
 import com.companion.cc.domain.usecase.StreamSendMessageUseCase
+import com.companion.cc.ui.theme.TactileIntensityPreference
 import com.companion.cc.ui.theme.VisualEffectsPreference
 import com.companion.cc.util.ErrorMessageHelper
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -54,10 +55,28 @@ class SettingsViewModel @Inject constructor(
         "system"
     )
 
+    val materialStyle = settingsManager.materialStyleFlow.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        "GLASS"
+    )
+
     val fontSize = settingsManager.fontSizeFlow.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
         "medium"
+    )
+
+    val notificationsEnabled = settingsManager.notificationsEnabledFlow.stateIn(
+        viewModelScope,
+        kotlinx.coroutines.flow.SharingStarted.Eagerly,
+        true
+    )
+
+    val tactileIntensity = settingsManager.tactileIntensityFlow.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        TactileIntensityPreference.SYSTEM
     )
 
     val visualCustomization = visualCustomizationManager.customizationFlow.stateIn(
@@ -332,10 +351,28 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun saveMaterialStyle(style: String) {
+        viewModelScope.launch {
+            settingsManager.saveMaterialStyle(style)
+        }
+    }
+
     fun saveFontSize(size: String) {
         viewModelScope.launch {
             settingsManager.saveFontSize(size)
             android.util.Log.d("SettingsViewModel", "字体大小已保存: $size")
+        }
+    }
+
+    fun saveNotificationsEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.saveNotificationsEnabled(enabled)
+        }
+    }
+
+    fun saveTactileIntensity(preference: TactileIntensityPreference) {
+        viewModelScope.launch {
+            settingsManager.saveTactileIntensity(preference)
         }
     }
 

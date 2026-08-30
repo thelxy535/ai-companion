@@ -37,29 +37,34 @@ class MemoryTreeViewModel @Inject constructor(
     private var allMessages: List<MessagesByDate> = emptyList()
     private var currentFilter: String = "全部"
     private var currentSearchQuery: String = ""
+    private var currentCompanionId: String? = null
 
-    fun loadMessages() {
+    fun loadMessages(companionId: String? = currentCompanionId) {
+        currentCompanionId = companionId
         viewModelScope.launch {
             _isLoading.value = true
-            android.util.Log.d("MemoryTreeViewModel", "开始加载消息...")
 
             try {
                 val userId = currentUserProvider.requireUserId()
-                android.util.Log.d("MemoryTreeViewModel", "用户ID: $userId")
 
                 // 获取统计信息
-                _totalMessages.value = statsDao.getTotalMessages(userId)
-                _totalDays.value = statsDao.getTotalDays(userId)
-                android.util.Log.d("MemoryTreeViewModel", "总消息数: ${_totalMessages.value}, 总天数: ${_totalDays.value}")
+                _totalMessages.value = companionId?.let {
+                    statsDao.getTotalMessagesForCompanion(userId, it)
+                } ?: statsDao.getTotalMessages(userId)
+                _totalDays.value = companionId?.let {
+                    statsDao.getTotalDaysForCompanion(userId, it)
+                } ?: statsDao.getTotalDays(userId)
 
                 // 获取按日期分组的消息计数
-                val dateCounts = statsDao.getMessageCountByDate(userId)
-                android.util.Log.d("MemoryTreeViewModel", "日期分组数: ${dateCounts.size}")
+                val dateCounts = companionId?.let {
+                    statsDao.getMessageCountByDateForCompanion(userId, it)
+                } ?: statsDao.getMessageCountByDate(userId)
 
                 // 获取每个日期的消息
                 val messagesByDate = dateCounts.map { dateCount ->
-                    val messages = statsDao.getMessagesByDate(userId, dateCount.date)
-                    android.util.Log.d("MemoryTreeViewModel", "日期 ${dateCount.date}: ${messages.size} 条消息")
+                    val messages = companionId?.let {
+                        statsDao.getMessagesByDateForCompanion(userId, it, dateCount.date)
+                    } ?: statsDao.getMessagesByDate(userId, dateCount.date)
                     MessagesByDate(
                         date = dateCount.date,
                         messages = messages.map { it.toDomain() },
@@ -68,11 +73,10 @@ class MemoryTreeViewModel @Inject constructor(
                 }
 
                 allMessages = messagesByDate
-                _messagesByDate.value = messagesByDate
-                android.util.Log.d("MemoryTreeViewModel", "加载完成，共 ${messagesByDate.size} 个日期组")
+                applyFilters()
 
-            } catch (e: Exception) {
-                android.util.Log.e("MemoryTreeViewModel", "加载消息失败", e)
+            } catch (_: Exception) {
+                // Keep the previous content visible when a reload fails.
             } finally {
                 _isLoading.value = false
             }
@@ -148,13 +152,15 @@ class MemoryTreeViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val userId = settingsManager.userIdFlow.first()
-                statsDao.deleteAllMessages(userId)
+                statsDao.deleteAllMessagesForCompanion(
+                    userId,
+                    currentCompanionId ?: return@launch
+                )
                 _messagesByDate.value = emptyList()
                 _totalMessages.value = 0
                 _totalDays.value = 0
-                android.util.Log.d("MemoryTreeViewModel", "已清理所有记忆")
-            } catch (e: Exception) {
-                android.util.Log.e("MemoryTreeViewModel", "清理记忆失败", e)
+            } catch (_: Exception) {
+                // The UI owns the operation feedback; do not claim success here.
             }
         }
     }
@@ -165,9 +171,12 @@ class MemoryTreeViewModel @Inject constructor(
             val messages = json.decodeFromString<List<Message>>(jsonContent)
 
             val userId = settingsManager.userIdFlow.first()
+            val companionId = currentCompanionId
+                ?: return Result.failure(IllegalStateException("缺少角色范围"))
+            val scopedMessages = messages.filter { it.companionId == companionId }
 
             // 转换为实体并保存
-            val entities = messages.map { message ->
+            val entities = scopedMessages.map { message ->
                 com.companion.cc.data.local.entity.MessageEntity(
                     id = message.id,
                     userId = userId,  // 使用当前用户 ID
@@ -188,15 +197,14 @@ class MemoryTreeViewModel @Inject constructor(
             // 批量插入数据库
             statsDao.insertMessages(entities)
 
-            // 重新加载
-            loadMessages()
+            // 重新加载并保留当前角色范围
+            loadMessages(currentCompanionId)
 
             android.util.Log.d("MemoryTreeViewModel", "成功导入 ${messages.size} 条记忆")
-            Result.success(messages.size)
-        } catch (e: Exception) {
-            android.util.Log.e("MemoryTreeViewModel", "导入记忆失败", e)
-            Result.failure(e)
-        }
+            Result.success(scopedMessages.size)
+            } catch (_: Exception) {
+                Result.failure(Exception("导入记忆失败"))
+            }
     }
 
     private fun com.companion.cc.data.local.entity.MessageEntity.toDomain() = Message(
@@ -211,6 +219,7 @@ class MemoryTreeViewModel @Inject constructor(
         isDualConversation = isDualConversation,
         replyToId = replyToId,
         createdAt = createdAt,
-        importance = importance
+        importance = importance,
+        isFavorited = isFavorited
     )
 }

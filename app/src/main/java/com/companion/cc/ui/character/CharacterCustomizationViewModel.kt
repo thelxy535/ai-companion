@@ -29,9 +29,14 @@ class CharacterCustomizationViewModel @Inject constructor(
     private val _saveState = MutableStateFlow<CharacterSaveState>(CharacterSaveState.Idle)
     val saveState: StateFlow<CharacterSaveState> = _saveState.asStateFlow()
 
+    private val saveGate = SingleFlightGate()
+    private val deleteGate = SingleFlightGate()
+    private var editingCharacterId: String? = null
+
     // 所有角色（来自 CharacterCatalog）
     val characters: StateFlow<List<ChatCharacter>> = characterCatalog.observeCharacters()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        // V7：Lazily 常驻内存——首次进角色页后数据驻留，再次进入无冷加载卡顿
+        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     // 表单字段
     private val _name = MutableStateFlow("")
@@ -62,6 +67,7 @@ class CharacterCustomizationViewModel @Inject constructor(
      * 加载角色进行编辑
      */
     fun loadCharacterForEdit(characterId: String) {
+        editingCharacterId = characterId
         viewModelScope.launch {
             try {
                 val userId = currentUserProvider.requireUserId()
@@ -76,6 +82,8 @@ class CharacterCustomizationViewModel @Inject constructor(
                     _behaviorRules.value = character.behaviorRules ?: BehaviorRules.default()
                     _voiceConfig.value = character.voiceConfig ?: VoiceConfig.default()
                     _exampleDialogues.value = character.exampleDialogues
+                } else {
+                    _saveState.value = CharacterSaveState.Failure("找不到要编辑的角色")
                 }
             } catch (e: Exception) {
                 _saveState.value = CharacterSaveState.Failure("加载角色失败: ${e.message}")
@@ -87,6 +95,7 @@ class CharacterCustomizationViewModel @Inject constructor(
      * 开始新角色创建
      */
     fun startNewCharacter() {
+        editingCharacterId = null
         resetForm()
         _currentCharacter.value = null
     }
@@ -95,12 +104,16 @@ class CharacterCustomizationViewModel @Inject constructor(
      * 保存角色
      */
     fun saveCharacter() {
-        if (_saveState.value is CharacterSaveState.Saving) {
+        if (!canSaveCharacter(editingCharacterId, _currentCharacter.value)) {
+            _saveState.value = CharacterSaveState.Failure("找不到要编辑的角色，无法保存")
+            return
+        }
+        if (!saveGate.tryAcquire()) {
             return // 防止重复保存
         }
+        _saveState.value = CharacterSaveState.Saving
 
         viewModelScope.launch {
-            _saveState.value = CharacterSaveState.Saving
             _saveState.value = try {
                 val userId = currentUserProvider.requireUserId()
                 val saved = _currentCharacter.value?.let { existing ->
@@ -130,6 +143,8 @@ class CharacterCustomizationViewModel @Inject constructor(
                 CharacterSaveState.Success(saved.id)
             } catch (error: Exception) {
                 CharacterSaveState.Failure(error.message ?: "保存角色失败")
+            } finally {
+                saveGate.release()
             }
         }
     }
@@ -147,12 +162,18 @@ class CharacterCustomizationViewModel @Inject constructor(
      * 删除角色
      */
     fun deleteCharacter(characterId: String) {
+        if (!deleteGate.tryAcquire()) {
+            return
+        }
+
         viewModelScope.launch {
             try {
                 val userId = currentUserProvider.requireUserId()
                 characterManager.deleteCharacter(userId, characterId)
             } catch (e: Exception) {
                 _saveState.value = CharacterSaveState.Failure("删除失败: ${e.message}")
+            } finally {
+                deleteGate.release()
             }
         }
     }
@@ -234,6 +255,36 @@ class CharacterCustomizationViewModel @Inject constructor(
         _voiceConfig.value = VoiceConfig.default()
         _exampleDialogues.value = emptyList()
         _currentCharacter.value = null
+    }
+
+    /**
+     * 判断当前表单是否有未保存修改。
+     */
+    fun hasUnsavedChanges(): Boolean {
+        val existing = _currentCharacter.value
+        if (editingCharacterId != null && existing == null) {
+            return false
+        }
+
+        return if (existing != null) {
+            _name.value != existing.name ||
+                    _description.value != existing.description ||
+                    _backstory.value != existing.backstory ||
+                    _greetingMessage.value != existing.greetingMessage ||
+                    _personality.value != existing.personality ||
+                    _behaviorRules.value != (existing.behaviorRules ?: BehaviorRules.default()) ||
+                    _voiceConfig.value != (existing.voiceConfig ?: VoiceConfig.default()) ||
+                    _exampleDialogues.value != existing.exampleDialogues
+        } else {
+            _name.value.isNotBlank() ||
+                    _description.value.isNotBlank() ||
+                    _backstory.value.isNotBlank() ||
+                    _greetingMessage.value != "你好，很高兴见到你！" ||
+                    _personality.value != PersonalityTraits.default() ||
+                    _behaviorRules.value != BehaviorRules.default() ||
+                    _voiceConfig.value != VoiceConfig.default() ||
+                    _exampleDialogues.value.isNotEmpty()
+        }
     }
 
     /**

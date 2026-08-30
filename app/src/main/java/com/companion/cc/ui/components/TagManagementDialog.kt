@@ -23,9 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.companion.cc.data.local.entity.TagEntity
-import com.companion.cc.ui.theme.GlassDialogSurface
 import com.companion.cc.ui.theme.LocalVisualTheme
-import com.companion.cc.ui.theme.CompactGlassSurface
 import com.companion.cc.ui.theme.TagColorAdapter
 import java.util.UUID
 
@@ -47,11 +45,12 @@ fun TagSelectionDialog(
     var showCreateDialog by remember { mutableStateOf(false) }
 
     Dialog(onDismissRequest = onDismiss) {
-        GlassDialogSurface(
+        Surface(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(max = 500.dp),
-            shape = RoundedCornerShape(16.dp)
+            shape = RoundedCornerShape(16.dp),
+            tonalElevation = 2.dp
         ) {
             Column(
                 modifier = Modifier.padding(16.dp)
@@ -151,23 +150,23 @@ private fun TagSelectionItem(
     isSelected: Boolean,
     onToggle: () -> Unit
 ) {
-    CompactGlassSurface(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        shape = RoundedCornerShape(8.dp),
-        onClick = onToggle,
-        fillOverride = if (isSelected) {
-            TagColorAdapter.parse(tag.color, LocalVisualTheme.current.tokens.accent).copy(alpha = 0.2f)
-        } else {
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-        },
-        borderOverride = if (isSelected) TagColorAdapter.parse(tag.color, LocalVisualTheme.current.tokens.accent) else null
+            .padding(vertical = 4.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(
+                if (isSelected) {
+                    TagColorAdapter.parse(tag.color, LocalVisualTheme.current.tokens.accent)
+                        .copy(alpha = 0.2f)
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                }
+            )
+            .clickable(onClick = onToggle)
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
             // 标签颜色指示器
             Box(
                 modifier = Modifier
@@ -193,7 +192,6 @@ private fun TagSelectionItem(
                 )
             }
         }
-    }
 }
 
 /**
@@ -209,9 +207,10 @@ fun CreateTagDialog(
     var selectedColor by remember { mutableStateOf(tagColors[0]) }
 
     Dialog(onDismissRequest = onDismiss) {
-        GlassDialogSurface(
+        Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp)
+            shape = RoundedCornerShape(16.dp),
+            tonalElevation = 2.dp
         ) {
             Column(
                 modifier = Modifier.padding(16.dp)
@@ -327,11 +326,12 @@ fun TagManagementDialog(
     var showCreateDialog by remember { mutableStateOf(false) }
 
     Dialog(onDismissRequest = onDismiss) {
-        GlassDialogSurface(
+        Surface(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(max = 500.dp),
-            shape = RoundedCornerShape(16.dp)
+            shape = RoundedCornerShape(16.dp),
+            tonalElevation = 2.dp
         ) {
             Column(
                 modifier = Modifier.padding(16.dp)
@@ -415,17 +415,13 @@ private fun TagManagementItem(
     tag: TagEntity,
     onDelete: () -> Unit
 ) {
-    CompactGlassSurface(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        shape = RoundedCornerShape(8.dp),
-        fillOverride = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            .padding(vertical = 4.dp)
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
             Box(
                 modifier = Modifier
                     .size(16.dp)
@@ -449,7 +445,6 @@ private fun TagManagementItem(
                 )
             }
         }
-    }
 }
 
 // 预设标签颜色

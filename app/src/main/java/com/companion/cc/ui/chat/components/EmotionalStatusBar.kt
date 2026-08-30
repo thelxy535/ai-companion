@@ -14,7 +14,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.companion.cc.domain.model.EmotionalState
 import com.companion.cc.domain.model.Mood
-import com.companion.cc.ui.theme.CompactGlassSurface
 
 /**
  * 情感状态栏（紧凑显示）
@@ -25,66 +24,62 @@ fun EmotionalStatusBar(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    CompactGlassSurface(
-        modifier = modifier.fillMaxWidth(),
-        fillOverride = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-        onClick = onClick
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
     ) {
+        // 心情
         Row(
-            modifier = Modifier
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = getMoodEmoji(emotionalState.mood),
+                style = MaterialTheme.typography.bodyLarge
+            )
+            Text(
+                text = getMoodText(emotionalState.mood),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        // 精力、好感度、压力（小图标）
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 心情
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(
-                    text = getMoodEmoji(emotionalState.mood),
-                    style = MaterialTheme.typography.bodyLarge
-                )
-                Text(
-                    text = getMoodText(emotionalState.mood),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            // 精力
+            MiniStatusIndicator(
+                icon = Icons.Default.BatteryChargingFull,
+                value = emotionalState.energy,
+                color = MaterialTheme.colorScheme.primary
+            )
 
-            // 精力、好感度、压力（小图标）
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // 精力
-                MiniStatusIndicator(
-                    icon = Icons.Default.BatteryChargingFull,
-                    value = emotionalState.energy,
-                    color = MaterialTheme.colorScheme.primary
-                )
+            // 好感度
+            MiniStatusIndicator(
+                icon = Icons.Default.Favorite,
+                value = emotionalState.affection,
+                color = MaterialTheme.colorScheme.error
+            )
 
-                // 好感度
-                MiniStatusIndicator(
-                    icon = Icons.Default.Favorite,
-                    value = emotionalState.affection,
-                    color = MaterialTheme.colorScheme.error
-                )
+            // 压力
+            MiniStatusIndicator(
+                icon = Icons.Default.Warning,
+                value = emotionalState.stress,
+                color = MaterialTheme.colorScheme.tertiary
+            )
 
-                // 压力
-                MiniStatusIndicator(
-                    icon = Icons.Default.Warning,
-                    value = emotionalState.stress,
-                    color = MaterialTheme.colorScheme.tertiary
-                )
-
-                Icon(
-                    imageVector = Icons.Default.KeyboardArrowDown,
-                    contentDescription = "展开详情",
-                    modifier = Modifier.size(16.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            Icon(
+                imageVector = Icons.Default.KeyboardArrowDown,
+                contentDescription = "展开详情",
+                modifier = Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
@@ -123,27 +118,25 @@ private fun MiniStatusIndicator(
 fun VoiceListeningIndicator(
     modifier: Modifier = Modifier
 ) {
-    CompactGlassSurface(
-        modifier = modifier.fillMaxWidth(),
-        fillOverride = MaterialTheme.colorScheme.primaryContainer
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f))
+            .padding(12.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = Icons.Default.Mic,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onPrimaryContainer
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = "正在监听...",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onPrimaryContainer
-            )
-        }
+        Icon(
+            imageVector = Icons.Default.Mic,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onPrimaryContainer
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = "正在监听...",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onPrimaryContainer
+        )
     }
 }
 
@@ -155,38 +148,36 @@ fun TTSSpeakingIndicator(
     onStop: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    CompactGlassSurface(
-        modifier = modifier.fillMaxWidth(),
-        fillOverride = MaterialTheme.colorScheme.secondaryContainer
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f))
+            .padding(12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
     ) {
         Row(
-            modifier = Modifier.padding(12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = Icons.Default.VolumeUp,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSecondaryContainer
-                )
-                Text(
-                    text = "正在播放...",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer
-                )
-            }
+            Icon(
+                imageVector = Icons.Default.VolumeUp,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+            Text(
+                text = "正在播放...",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+        }
 
-            IconButton(onClick = onStop) {
-                Icon(
-                    imageVector = Icons.Default.Stop,
-                    contentDescription = "停止播放",
-                    tint = MaterialTheme.colorScheme.onSecondaryContainer
-                )
-            }
+        IconButton(onClick = onStop) {
+            Icon(
+                imageVector = Icons.Default.Stop,
+                contentDescription = "停止播放",
+                tint = MaterialTheme.colorScheme.onSecondaryContainer
+            )
         }
     }
 }

@@ -89,36 +89,4 @@ class CompanionStateManager @Inject constructor(
             else -> null
         }
     }
-
-    /**
-     * 获取API参数
-     */
-    fun getApiParameters(
-        companionId: String,
-        state: Any,
-        specialMode: String?
-    ): ApiParameters {
-        return when (companionId) {
-            "muse" -> {
-                val museState = state as MuseMoodState
-                MuseResponseStyler().getApiParameters(museState, specialMode)
-            }
-            "xiaocan" -> {
-                val xiaoCanState = state as XiaoCanMoodState
-                XiaoCanResponseStyler().getApiParameters(xiaoCanState, specialMode)
-            }
-            else -> ApiParameters(0.7, 0.8, 100, 0.4, 0.2)
-        }
-    }
 }
-
-/**
- * API参数
- */
-data class ApiParameters(
-    val temperature: Double,
-    val topP: Double,
-    val maxTokens: Int,
-    val frequencyPenalty: Double,
-    val presencePenalty: Double
-)

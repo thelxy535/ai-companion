@@ -10,6 +10,9 @@ import android.content.IntentFilter
 import android.os.Build
 import android.os.PowerManager
 import androidx.compose.runtime.Composable
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
@@ -36,6 +39,10 @@ val LocalVisualTheme = staticCompositionLocalOf {
     )
 }
 
+val LocalTactileIntensityPreference = staticCompositionLocalOf {
+    TactileIntensityPreference.SYSTEM
+}
+
 val LocalVisualCustomization = staticCompositionLocalOf {
     VisualCustomization.default()
 }
@@ -59,6 +66,7 @@ fun AppVisualTheme(
     darkTheme: Boolean,
     fontSize: String,
     customization: VisualCustomization,
+    tactileIntensity: TactileIntensityPreference = TactileIntensityPreference.SYSTEM,
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current
@@ -93,11 +101,24 @@ fun AppVisualTheme(
     CompositionLocalProvider(
         LocalVisualTheme provides visualTheme,
         LocalVisualCustomization provides customization,
+        LocalTactileIntensityPreference provides tactileIntensity,
         LocalGlassEffectProfile provides effectProfile,
         LocalFontScale provides getFontScale(fontSize)
     ) {
+        // V8 ④ 强调色过渡：primary/secondary 与主题 .8s 同节奏流动
+        val baseScheme = visualTheme.materialColors
+        val animatedPrimary by animateColorAsState(baseScheme.primary, tween(800, easing = LinearEasing), label = "accentPrimary")
+        val animatedSecondary by animateColorAsState(baseScheme.secondary, tween(800, easing = LinearEasing), label = "accentSecondary")
+        // V9PM 4b：文字色与主题同节奏过渡（800ms LinearEasing）
+        val animatedOnSurface by animateColorAsState(baseScheme.onSurface, tween(800, easing = LinearEasing), label = "accentOnSurface")
+        val animatedOnSurfaceVariant by animateColorAsState(baseScheme.onSurfaceVariant, tween(800, easing = LinearEasing), label = "accentOnSurfaceVariant")
         MaterialTheme(
-            colorScheme = visualTheme.materialColors,
+            colorScheme = baseScheme.copy(
+                primary = animatedPrimary,
+                secondary = animatedSecondary,
+                onSurface = animatedOnSurface,
+                onSurfaceVariant = animatedOnSurfaceVariant,
+            ),
             typography = createTypography(fontSize),
             content = content
         )
@@ -139,10 +160,6 @@ private fun rememberGlassEffectEnvironment(context: Context): GlassEffectEnviron
         sdkInt = Build.VERSION.SDK_INT,
         isLowRamDevice = activityManager?.isLowRamDevice ?: false,
         isPowerSaveMode = powerSaveMode,
-        areSystemAnimationsEnabled = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            ValueAnimator.areAnimatorsEnabled()
-        } else {
-            false
-        }
+        areSystemAnimationsEnabled = ValueAnimator.areAnimatorsEnabled()
     )
 }

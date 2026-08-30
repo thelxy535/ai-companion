@@ -1,9 +1,10 @@
 package com.companion.cc.ui.favorites
 
+import com.companion.cc.ui.designsystem.auroraScreenBackground
+import com.companion.cc.ui.theme.LocalVisualTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Favorite
@@ -17,43 +18,39 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.companion.cc.domain.model.Message
 import com.companion.cc.domain.model.MessageRole
-import com.companion.cc.ui.chat.ChatViewModel
-import com.companion.cc.ui.theme.CompactGlassSurface
-import com.companion.cc.ui.theme.GlassSurface
 import java.text.SimpleDateFormat
 import java.util.*
+import androidx.compose.foundation.layout.padding
 
-/**
- * 特殊的回忆页面（原收藏夹）
- * 显示所有珍藏的对话
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FavoritesScreen(
     companionId: String,
     onNavigateBack: () -> Unit,
-    viewModel: ChatViewModel = hiltViewModel()
+    viewModel: FavoritesViewModel = hiltViewModel()
 ) {
-    val favoriteMessages by viewModel.getFavoriteMessages(companionId).collectAsState(initial = emptyList())
+    LaunchedEffect(companionId) { viewModel.setCompanion(companionId) }
+    val state by viewModel.uiState.collectAsState()
+    val actionError by viewModel.actionError.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(actionError) {
+        actionError?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.clearActionError()
+        }
+    }
 
     Scaffold(
+        modifier = Modifier.auroraScreenBackground(LocalVisualTheme.current.tokens.backdrop.isDark),
         topBar = {
-            GlassSurface(
-                modifier = Modifier.fillMaxWidth(),
-                contentPadding = PaddingValues(0.dp),
-                useStrongFill = true
-            ) {
-                TopAppBar(
+            TopAppBar(
+                modifier = Modifier.padding(top = 44.dp),
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Favorite,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(24.dp)
-                        )
+                        Icon(Icons.Default.Favorite, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("特殊的回忆")
+                        Text("收藏内容")
                     }
                 },
                 navigationIcon = {
@@ -61,83 +58,85 @@ fun FavoritesScreen(
                         Icon(Icons.Default.ArrowBack, contentDescription = "返回")
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent
-                )
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
             )
-            }
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = Color.Transparent
     ) { paddingValues ->
-        if (favoriteMessages.isEmpty()) {
-            // 空状态
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Favorite,
-                        contentDescription = null,
-                        modifier = Modifier.size(64.dp),
-                        tint = MaterialTheme.colorScheme.outline
-                    )
-                    Text(
-                        text = "还没有特别想记住的对话",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = "长按消息可以收藏",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.outline
-                    )
-                }
-            }
-        } else {
-            // 收藏消息列表
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(favoriteMessages) { message ->
-                    FavoriteMessageRow(
-                        message = message,
-                        onUnfavorite = {
-                            viewModel.toggleFavorite(message.id, false)
-                        }
-                    )
-                }
+        FavoritesContent(
+            state = state,
+            onRemoveFavorite = viewModel::removeFavorite,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .navigationBarsPadding()
+        )
+    }
+}
+
+@Composable
+internal fun FavoritesContent(
+    state: FavoritesUiState,
+    onRemoveFavorite: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    when (state) {
+        FavoritesUiState.Loading -> Box(
+            modifier = modifier,
+            contentAlignment = Alignment.Center
+        ) { CircularProgressIndicator() }
+        FavoritesUiState.Empty -> FavoritesEmptyState(modifier)
+        is FavoritesUiState.Failure -> Box(
+            modifier = modifier,
+            contentAlignment = Alignment.Center
+        ) {
+            Text(state.message, color = MaterialTheme.colorScheme.error)
+        }
+        is FavoritesUiState.Content -> LazyColumn(
+            modifier = modifier,
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            items(state.messages, key = { it.id }) { message ->
+                FavoriteMessageRow(
+                    message = message,
+                    onUnfavorite = { onRemoveFavorite(message.id) }
+                )
             }
         }
     }
 }
 
-/**
- * 收藏消息行
- */
 @Composable
-private fun FavoriteMessageRow(
-    message: Message,
-    onUnfavorite: () -> Unit
-) {
-    val dateFormat = remember { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()) }
-    CompactGlassSurface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp)
+private fun FavoritesEmptyState(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier.fillMaxSize().navigationBarsPadding().padding(24.dp),
+        contentAlignment = Alignment.Center
     ) {
         Column(
-            modifier = Modifier.padding(16.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // 头部：角色 + 时间
+            Icon(Icons.Default.Favorite, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.outline)
+            Text("还没有特别想记住的对话", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("长按消息可以收藏", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.outline)
+        }
+    }
+}
+
+@Composable
+private fun FavoriteMessageRow(message: Message, onUnfavorite: () -> Unit) {
+    val dateFormat = remember { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()) }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -149,51 +148,19 @@ private fun FavoriteMessageRow(
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
                 )
-
-                Text(
-                    text = dateFormat.format(Date(message.timestamp)),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Text(dateFormat.format(Date(message.timestamp)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-
             Spacer(modifier = Modifier.height(8.dp))
-
-            // 消息内容
-            Text(
-                text = message.content,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-
-            // 动作描述（如果有）
+            Text(message.content, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
             if (!message.action.isNullOrBlank()) {
                 Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "【${message.action}】",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
-                )
+                Text("【${message.action}】", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-
             Spacer(modifier = Modifier.height(12.dp))
-
-            // 取消收藏按钮
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
-            ) {
-                TextButton(onClick = onUnfavorite) {
-                    Icon(
-                        imageVector = Icons.Default.Favorite,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("取消收藏")
-                }
+            TextButton(onClick = onUnfavorite) {
+                Icon(Icons.Default.Favorite, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("移出珍藏")
             }
         }
-    }
 }

@@ -72,20 +72,15 @@ class DefaultCharacterCatalog @Inject constructor(
 
         // Check custom characters for current user
         val userId = users.requireUserId()
-        return repository.getCharacterById(characterId)?.let { customChar ->
-            // Only return if it belongs to the current user
-            if (customChar.userId == userId) {
-                ChatCharacter.Custom(
-                    id = customChar.id,
-                    name = customChar.name,
-                    avatar = customChar.avatar,
-                    description = customChar.description,
-                    personality = customChar.personality.toString(),
-                    userId = customChar.userId
-                )
-            } else {
-                null
-            }
+        return repository.getCharacterByIdForUser(characterId, userId)?.let { customChar ->
+            ChatCharacter.Custom(
+                id = customChar.id,
+                name = customChar.name,
+                avatar = customChar.avatar,
+                description = customChar.description,
+                personality = customChar.personality.toString(),
+                userId = customChar.userId
+            )
         }
     }
 }

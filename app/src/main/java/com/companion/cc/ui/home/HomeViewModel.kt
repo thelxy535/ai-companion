@@ -9,6 +9,7 @@ import com.companion.cc.domain.model.ChatCharacter
 import com.companion.cc.domain.model.Message
 import com.companion.cc.domain.repository.MessageRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import javax.inject.Inject
 
@@ -37,6 +38,7 @@ data class HomeCharacterItem(
  * 结合每个角色的最新消息和在线状态，生成排序后的 UI 状态
  */
 @HiltViewModel
+@OptIn(ExperimentalCoroutinesApi::class)
 class HomeViewModel @Inject constructor(
     private val messageRepository: MessageRepository,
     private val currentUserProvider: CurrentUserProvider,
@@ -59,7 +61,7 @@ class HomeViewModel @Inject constructor(
         onlineStatusManager.onlineCompanions,
     ) { userId, characters, online -> Triple(userId, characters, online) }
         .flatMapLatest { (userId, characters, online) ->
-            if (userId == null) {
+            if (userId.isBlank()) {
                 flowOf(HomeUiState.Loading)
             } else if (characters.isEmpty()) {
                 flowOf(HomeUiState.Content(emptyList()))
@@ -71,14 +73,19 @@ class HomeViewModel @Inject constructor(
                             HomeCharacterItem(
                                 character = character,
                                 lastMessage = lastMessage,
+                                // 在线 = 显式标记 或 5 分钟内活跃 或 内置角色常驻在线（V7 伴侣语义：AI 永远"在"）
                                 isOnline = online.contains(character.id)
+                                    || character.id in setOf("xiaocan", "muse")
+                                    || (lastMessage?.timestamp?.let {
+                                        System.currentTimeMillis() - it < 5 * 60 * 1000L
+                                    } ?: false)
                             )
                         }
                 }) { items ->
                     // 按最新消息时间倒序排序（没有消息的排在最后）
                     HomeUiState.Content(
                         items.sortedByDescending { it.lastMessage?.timestamp ?: 0L }
-                    ) as HomeUiState
+                    )
                 }
             }
         }
@@ -87,7 +94,8 @@ class HomeViewModel @Inject constructor(
         }
         .stateIn(
             scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
+            // V7：Lazily 常驻内存——切 Tab 回来直接显示缓存数据，不再闪 Loading
+            started = SharingStarted.Lazily,
             initialValue = HomeUiState.Loading
         )
 

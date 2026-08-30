@@ -78,6 +78,16 @@ class MessageRepositoryImplTest {
     }
 
     @Test
+    fun `getFavoritedMessages should preserve favorite state`() = runTest {
+        val entities = listOf(createMessageEntity(isFavorited = true))
+        `when`(messageDao.getFavoritedMessages("user1")).thenReturn(flowOf(entities))
+
+        val result = repository.getFavoritedMessages("user1").first()
+
+        assertTrue("收藏状态应该保留", result.single().isFavorited)
+    }
+
+    @Test
     fun `deleteMessage should call dao deleteMessage`() = runTest {
         // Given
         val messageId = "msg123"
@@ -157,7 +167,8 @@ class MessageRepositoryImplTest {
         companionId: String = "companion1",
         role: String = "user",
         content: String = "Test",
-        timestamp: Long = 1000L
+        timestamp: Long = 1000L,
+        isFavorited: Boolean = false
     ) = MessageEntity(
         id = id,
         userId = userId,
@@ -170,6 +181,7 @@ class MessageRepositoryImplTest {
         isDualConversation = false,
         replyToId = null,
         createdAt = timestamp,
-        importance = 0
+        importance = 0,
+        isFavorited = isFavorited
     )
 }
