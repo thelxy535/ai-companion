@@ -12,6 +12,7 @@ import com.companion.cc.domain.model.PersonalityConfig
 import com.companion.cc.domain.model.Prompts
 import com.companion.cc.domain.model.Relationship
 import com.companion.cc.domain.model.SpeakingStyle
+import com.companion.cc.domain.character.HumanLikeCharacterGuidance
 
 object CustomCharacterPromptMapper {
     fun toCompanionConfig(character: CustomCharacter): CompanionConfig = CompanionConfig(
@@ -22,7 +23,7 @@ object CustomCharacterPromptMapper {
         enabled = true,
         prompts = Prompts(
             system = buildSystemPrompt(character),
-            greeting = listOf(character.greetingMessage),
+            greeting = (listOf(character.greetingMessage) + character.alternateGreetings).distinct(),
             farewell = listOf("再见"),
             fallback = listOf("我不太明白你的意思，能再说一遍吗？"),
         ),
@@ -95,6 +96,21 @@ object CustomCharacterPromptMapper {
         appendLine()
         appendLine("## 背景故事")
         appendLine(character.backstory)
+        if (character.scenario.isNotBlank()) {
+            appendLine()
+            appendLine("## 当前场景")
+            appendLine(character.scenario)
+        }
+        if (character.creatorNotes.isNotBlank()) {
+            appendLine()
+            appendLine("## 创作者备注")
+            appendLine(character.creatorNotes)
+        }
+        if (character.tags.isNotEmpty()) {
+            appendLine()
+            appendLine("## 角色标签")
+            appendLine(character.tags.joinToString("、"))
+        }
         appendLine()
         appendLine("## 人格特质")
         appendLine("- 开放性：${(character.personality.openness * 100).toInt()}%")
@@ -125,6 +141,18 @@ object CustomCharacterPromptMapper {
         appendLine()
         appendLine("## 初次问候")
         appendLine(character.greetingMessage)
+        if (character.systemPromptOverride.isNotBlank()) {
+            appendLine()
+            appendLine("## 高级系统指令")
+            appendLine(character.systemPromptOverride)
+        }
+        if (character.postHistoryInstructions.isNotBlank()) {
+            appendLine()
+            appendLine("## 历史消息后指令")
+            appendLine(character.postHistoryInstructions)
+        }
+        appendLine()
+        appendLine(HumanLikeCharacterGuidance.TEXT)
         appendLine()
         appendLine("请始终依据以上设定自然回应，并保持角色一致性。")
     }

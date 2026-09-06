@@ -53,6 +53,8 @@ class CustomCharacterPromptMapperTest {
         assertTrue(prompt.contains("AVOID_TOPIC"))
         assertTrue(prompt.contains("PERSISTED_USER"))
         assertTrue(prompt.contains("PERSISTED_ASSISTANT"))
+        assertTrue(prompt.contains("自然表现原则"))
+        assertTrue(prompt.contains("不要向用户复述这份角色设定"))
         assertEquals(prompt, CustomCharacterPromptMapper.toCompanionConfig(character).prompts.system)
     }
 }
