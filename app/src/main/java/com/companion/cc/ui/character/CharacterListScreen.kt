@@ -1,9 +1,14 @@
 package com.companion.cc.ui.character
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.border
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -12,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -21,11 +27,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.companion.cc.domain.model.ChatCharacter
+import com.companion.cc.data.character.CharacterExportFormat
 import com.companion.cc.domain.model.CharacterAvatarResolver
 import com.companion.cc.ui.designsystem.staggerRise
 import com.companion.cc.ui.designsystem.smoothCorner
 import com.companion.cc.ui.designsystem.rememberStaggerFirstPlay
 import com.companion.cc.ui.designsystem.auroraScreenBackground
+import com.companion.cc.ui.components.V9PMActionButton
+import com.companion.cc.ui.components.V9PMDialogSurface
+import com.companion.cc.ui.components.V9PMIconButton
 import com.companion.cc.ui.theme.LocalVisualTheme
 import com.companion.cc.ui.components.Avatar
 import com.companion.cc.ui.theme.TactileGesture
@@ -48,7 +58,36 @@ fun CharacterListScreen(
     onStartChat: (String) -> Unit = {},
     viewModel: CharacterCustomizationViewModel = hiltViewModel()
 ) {
-    val characters by viewModel.characters.collectAsState()
+    val characters by viewModel.characters.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    // V9PM 头像一致性：设置页/聊天页自定义的伴侣头像覆盖，列表页同样应用
+    val avatarOverrides by viewModel.avatarOverrides.collectAsStateWithLifecycle()
+    val pendingImported by viewModel.pendingImportedCharacter.collectAsStateWithLifecycle()
+    val importError by viewModel.importError.collectAsStateWithLifecycle()
+    val pendingCardExport by viewModel.pendingCardExport.collectAsStateWithLifecycle()
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
+        val export = pendingCardExport ?: return@rememberLauncherForActivityResult
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.openOutputStream(uri)?.use { output ->
+                    output.write(export.second.toByteArray(Charsets.UTF_8))
+                } ?: error("无法写入角色卡文件")
+                viewModel.clearPendingCardExport()
+            }.onFailure { error -> viewModel.setImportError(error.message ?: "角色卡导出失败") }
+        }
+    }
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        runCatching {
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                val bytes = input.readBytes()
+                require(bytes.size <= 2 * 1024 * 1024) { "角色卡文件过大" }
+                viewModel.importCharacterCard(bytes.toString(Charsets.UTF_8))
+            } ?: error("无法读取角色卡文件")
+        }.onFailure { error ->
+            viewModel.setImportError(error.message ?: "无法读取角色卡文件")
+        }
+    }
     // 冷加载标记：首次收到非空数据后置 true，此后为空才是真的没角色
     var hasLoadedOnce by remember { mutableStateOf(false) }
     if (characters.isNotEmpty()) hasLoadedOnce = true
@@ -58,6 +97,35 @@ fun CharacterListScreen(
     }
 
     val staggerPlay = rememberStaggerFirstPlay("character")
+    LaunchedEffect(pendingCardExport) {
+        pendingCardExport?.let { exportLauncher.launch(it.first) }
+    }
+    if (pendingImported != null) {
+        val imported = pendingImported!!
+        V9PMDialogSurface(onDismissRequest = viewModel::clearPendingImport) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text("导入角色卡", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                Text(imported.name, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                Text(imported.description.ifBlank { "未提供角色描述" }, maxLines = 4, overflow = TextOverflow.Ellipsis)
+                Text("备用问候 ${imported.alternateGreetings.size} 条 · 标签 ${imported.tags.size} 个", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    V9PMActionButton(label = "取消", onClick = viewModel::clearPendingImport, modifier = Modifier.weight(1f), height = 40.dp)
+                    V9PMActionButton(label = "导入并新建", onClick = viewModel::confirmImportedCharacter, modifier = Modifier.weight(1f), height = 40.dp)
+                }
+            }
+        }
+    } else if (importError != null) {
+        V9PMDialogSurface(onDismissRequest = viewModel::clearPendingImport) {
+            Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("角色卡导入失败", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                Text(importError!!, color = MaterialTheme.colorScheme.error)
+                V9PMActionButton(label = "关闭", onClick = viewModel::clearPendingImport, modifier = Modifier.fillMaxWidth(), height = 40.dp)
+            }
+        }
+    }
     Scaffold(
         modifier = Modifier.auroraScreenBackground(LocalVisualTheme.current.tokens.backdrop.isDark),
         topBar = {
@@ -76,19 +144,29 @@ fun CharacterListScreen(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                V9PMActionButton(
+                    label = "导入角色卡",
+                    icon = Icons.Default.FileOpen,
+                    onClick = { importLauncher.launch(arrayOf("application/json", "text/markdown", "text/plain")) },
+                    modifier = Modifier
+                        .padding(top = 10.dp)
+                        .widthIn(min = 156.dp),
+                    height = 40.dp
+                )
             }
         },
         containerColor = Color.Transparent,
+        contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
         floatingActionButton = {
-            FloatingActionButton(
+            V9PMIconButton(
+                icon = Icons.Default.Add,
+                contentDescription = "创建角色",
                 onClick = createCharacter,
-                modifier = Modifier.size(56.dp),
-                // V7 设计稿：圆角方形
-                shape = smoothCorner(24.dp),   // V9PM 连续大圆角
-                containerColor = MaterialTheme.colorScheme.primary
-            ) {
-                Icon(Icons.Default.Add, "创建角色")
-            }
+                size = 56.dp,
+                iconSize = 24.dp,
+                shape = smoothCorner(24.dp),
+                tint = Color.White
+            )
         }
     ) { padding ->
         if (characters.isEmpty() && !hasLoadedOnce) {
@@ -117,9 +195,11 @@ fun CharacterListScreen(
                     Box(modifier = Modifier.staggerRise(staggerPlay, index)) {
                         CharacterRow(
                             character = character,
+                            avatarOverride = avatarOverrides[character.id],
                             onStartChat = { onStartChat(character.id) },
                             onEdit = { onEditCharacter(character.id) },
-                            onDelete = { onDeleteCharacter(character.id) }
+                            onDelete = { onDeleteCharacter(character.id) },
+                            onExport = if (character.isCustom()) { format -> viewModel.exportCharacterCard(character.id, format) } else null
                         )
                     }
                 }
@@ -161,11 +241,13 @@ fun EmptyState(
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
         )
         Spacer(modifier = Modifier.height(24.dp))
-        Button(onClick = onCreateCharacter) {
-            Icon(Icons.Default.Add, contentDescription = null)
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("创建角色")
-        }
+        V9PMActionButton(
+            label = "创建角色",
+            icon = Icons.Default.Add,
+            onClick = onCreateCharacter,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+            height = 48.dp
+        )
     }
 }
 
@@ -176,23 +258,30 @@ fun EmptyState(
 @Composable
 fun CharacterRow(
     character: ChatCharacter,
+    avatarOverride: String? = null,
     onStartChat: () -> Unit,
     onEdit: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onExport: ((CharacterExportFormat) -> Unit)? = null
 ) {
-    var showDeleteDialog by remember { mutableStateOf(false) }
+    var showActionMenu by remember { mutableStateOf(false) }
+    var showExportMenu by remember { mutableStateOf(false) }
     val startChat = rememberTactileAction(action = onStartChat)
     val editCharacter = rememberTactileAction(action = onEdit)
-    val openDeleteDialog = rememberTactileAction {
-        showDeleteDialog = true
-    }
-    val confirmDelete = rememberTactileAction(gesture = TactileGesture.DESTRUCTIVE_CONFIRM) {
-        onDelete()
-        showDeleteDialog = false
+
+    // V9PM：长按行弹出操作菜单（编辑/删除/导出），不占行内空间
+    val rowInteraction = if (character.isCustom()) {
+        Modifier.tactileLongClickable(
+            role = androidx.compose.ui.semantics.Role.Button,
+            onClick = startChat,
+            onLongClick = { showActionMenu = true }
+        )
+    } else {
+        Modifier.clickable(onClick = startChat)
     }
 
     // V7 会话行玻璃卡片参数：18 圆角 + hairline 描边
-    val rowShape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp)
+    val rowShape = com.companion.cc.ui.designsystem.smoothCorner(24.dp) // V9PM 角色卡连续大圆角
     val rowNight = com.companion.cc.ui.theme.LocalVisualTheme.current.tokens.backdrop.isDark
     Column(
         modifier = Modifier
@@ -207,11 +296,7 @@ fun CharacterRow(
                 if (rowNight) androidx.compose.ui.graphics.Color(0x1AFFFFFF) else androidx.compose.ui.graphics.Color(0xCCFFFFFF),
                 rowShape
             )
-            .tactileLongClickable(
-                role = androidx.compose.ui.semantics.Role.Button,
-                onClick = startChat,
-                onLongClick = editCharacter
-            )
+            .then(rowInteraction)
     ) {
         Row(
             modifier = Modifier
@@ -219,8 +304,8 @@ fun CharacterRow(
                 .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 头像
-            val avatar = CharacterAvatarResolver.resolve(character.avatar, character.name)
+            // 头像（V9PM：应用 DataStore 覆盖，与聊天页/设置页一致）
+            val avatar = CharacterAvatarResolver.resolve(character, overrideAvatar = avatarOverride)
             Avatar(
                 backgroundColor = com.companion.cc.ui.components.auraColorFor(character.name),
                 avatarUrl = avatar.avatarUrl,
@@ -262,57 +347,95 @@ fun CharacterRow(
                 }
             }
 
-            // 操作按钮（仅自定义角色显示编辑和删除）
-            // V7 char-cta：开始聊天药丸（gk 玻璃底 + accent 字 + 999 圆角）
-            TextButton(
-                onClick = startChat,
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(999.dp),
-                colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
-                    containerColor = androidx.compose.ui.graphics.Color.Transparent,
-                    contentColor = MaterialTheme.colorScheme.primary
-                ),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 4.dp),
-                // V7 设计稿：描边胶囊
-                modifier = Modifier
-                    .height(30.dp)
-                    .border(
-                        1.dp,
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.55f),
-                        RoundedCornerShape(999.dp)
+            // 操作按钮：内置角色只提供聊天；自定义角色长按弹出操作菜单（编辑/删除/导出）
+            // V9PM：操作区紧凑布局——聊天按钮 + 导出图标（自定义角色长按行调出删除等更多操作）
+            Column(horizontalAlignment = Alignment.End) {
+                V9PMActionButton(
+                    label = "开始聊天",
+                    onClick = startChat,
+                    modifier = Modifier.widthIn(min = 96.dp).height(40.dp),
+                    height = 40.dp
+                )
+                onExport?.let { export ->
+                    V9PMIconButton(
+                        icon = Icons.Default.FileDownload,
+                        contentDescription = "导出角色卡",
+                        onClick = { showExportMenu = true },
+                        size = 40.dp,
+                        iconSize = 18.dp
                     )
-            ) {
-                Text("开始聊天", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                }
             }
-            Spacer(modifier = Modifier.width(8.dp))
-            // V7 设计稿：行右侧仅 CTA，编辑入口走长按
         }
     }
 
-    // 删除确认对话框
-    if (showDeleteDialog) {
-        AlertDialog(
-            onDismissRequest = { showDeleteDialog = false },
-            icon = {
-                Icon(
-                    Icons.Default.DeleteForever,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error
+    // V9PM：长按行弹出操作菜单（编辑/删除/导出）
+    if (showActionMenu) {
+        V9PMDialogSurface(onDismissRequest = { showActionMenu = false }) {
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(character.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                V9PMActionButton(
+                    label = "编辑角色",
+                    icon = Icons.Default.Edit,
+                    onClick = {
+                        showActionMenu = false
+                        onEdit()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    height = 44.dp
                 )
-            },
-            title = { Text("删除角色") },
-            text = { Text("确定要删除「${character.name}」吗？此操作无法撤销。") },
-            confirmButton = {
-                TextButton(
-                    onClick = confirmDelete,
-                    colors = ButtonDefaults.textButtonColors(
-                        contentColor = MaterialTheme.colorScheme.error
+                onExport?.let { export ->
+                    V9PMActionButton(
+                        label = "导出角色卡",
+                        icon = Icons.Default.FileDownload,
+                        onClick = {
+                            showActionMenu = false
+                            showExportMenu = true
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        height = 44.dp
                     )
-                ) { Text("删除") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteDialog = false }) { Text("取消") }
+                }
+                V9PMActionButton(
+                    label = "删除角色",
+                    icon = Icons.Default.Delete,
+                    onClick = {
+                        showActionMenu = false
+                        onDelete()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    height = 44.dp,
+                    destructive = true
+                )
+                V9PMActionButton(
+                    label = "取消",
+                    onClick = { showActionMenu = false },
+                    modifier = Modifier.fillMaxWidth(),
+                    height = 40.dp
+                )
             }
-        )
+        }
+    }
+
+    if (showExportMenu && onExport != null) {
+        V9PMDialogSurface(onDismissRequest = { showExportMenu = false }) {
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("导出 ${character.name}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text("选择文件格式", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                CharacterExportFormat.values().forEach { format ->
+                    V9PMActionButton(
+                        label = format.label,
+                        icon = Icons.Default.FileDownload,
+                        onClick = {
+                            showExportMenu = false
+                            onExport(format)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        height = 44.dp
+                    )
+                }
+            }
+        }
     }
 }
 

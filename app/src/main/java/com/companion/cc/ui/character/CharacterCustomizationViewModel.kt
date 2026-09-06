@@ -6,6 +6,8 @@ import com.companion.cc.domain.character.CharacterCatalog
 import com.companion.cc.domain.identity.CurrentUserProvider
 import com.companion.cc.domain.manager.CharacterCustomizationManager
 import com.companion.cc.domain.model.*
+import com.companion.cc.data.character.CharacterExportFormat
+import com.companion.cc.data.character.CharacterTransferCodec
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -18,7 +20,8 @@ import javax.inject.Inject
 class CharacterCustomizationViewModel @Inject constructor(
     private val characterManager: CharacterCustomizationManager,
     private val currentUserProvider: CurrentUserProvider,
-    private val characterCatalog: CharacterCatalog
+    private val characterCatalog: CharacterCatalog,
+    private val settingsManager: com.companion.cc.data.local.SettingsManager
 ) : ViewModel() {
 
     // 当前编辑的角色
@@ -37,6 +40,10 @@ class CharacterCustomizationViewModel @Inject constructor(
     val characters: StateFlow<List<ChatCharacter>> = characterCatalog.observeCharacters()
         // V7：Lazily 常驻内存——首次进角色页后数据驻留，再次进入无冷加载卡顿
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    // V9PM 头像一致性：设置页/聊天页自定义的伴侣头像覆盖 Map（全 App 统一展示）
+    val avatarOverrides: StateFlow<Map<String, String>> = settingsManager.companionAvatarOverridesFlow
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
 
     // 表单字段
     private val _name = MutableStateFlow("")
@@ -63,9 +70,54 @@ class CharacterCustomizationViewModel @Inject constructor(
     private val _exampleDialogues = MutableStateFlow<List<ExampleDialogue>>(emptyList())
     val exampleDialogues: StateFlow<List<ExampleDialogue>> = _exampleDialogues.asStateFlow()
 
+    private val _pendingImportedCharacter = MutableStateFlow<CustomCharacter?>(null)
+    val pendingImportedCharacter: StateFlow<CustomCharacter?> = _pendingImportedCharacter.asStateFlow()
+    private val _importError = MutableStateFlow<String?>(null)
+    val importError: StateFlow<String?> = _importError.asStateFlow()
+    private val _pendingCardExport = MutableStateFlow<Pair<String, String>?>(null)
+    val pendingCardExport: StateFlow<Pair<String, String>?> = _pendingCardExport.asStateFlow()
+
+    private val _scenario = MutableStateFlow("")
+    val scenario: StateFlow<String> = _scenario.asStateFlow()
+    private val _alternateGreetings = MutableStateFlow<List<String>>(emptyList())
+    val alternateGreetings: StateFlow<List<String>> = _alternateGreetings.asStateFlow()
+    private val _creatorNotes = MutableStateFlow("")
+    val creatorNotes: StateFlow<String> = _creatorNotes.asStateFlow()
+    private val _creator = MutableStateFlow("")
+    val creator: StateFlow<String> = _creator.asStateFlow()
+    private val _characterVersion = MutableStateFlow("1.0")
+    val characterVersion: StateFlow<String> = _characterVersion.asStateFlow()
+    private val _tags = MutableStateFlow<List<String>>(emptyList())
+    val tags: StateFlow<List<String>> = _tags.asStateFlow()
+    private val _systemPromptOverride = MutableStateFlow("")
+    val systemPromptOverride: StateFlow<String> = _systemPromptOverride.asStateFlow()
+    private val _postHistoryInstructions = MutableStateFlow("")
+    val postHistoryInstructions: StateFlow<String> = _postHistoryInstructions.asStateFlow()
+    private val _characterBook = MutableStateFlow<List<com.companion.cc.domain.model.CharacterBookEntry>>(emptyList())
+    val characterBook: StateFlow<List<com.companion.cc.domain.model.CharacterBookEntry>> = _characterBook.asStateFlow()
+
     /**
      * 加载角色进行编辑
      */
+    /** V9PM：组装试聊草稿（不入库；userId 用占位，试聊屏自行管理会话） */
+    fun buildDraft(): CustomCharacter? {
+        val name = _name.value.trim()
+        if (name.isEmpty()) return null
+        return CustomCharacter(
+            id = editingCharacterId ?: "preview_${System.currentTimeMillis()}",
+            userId = "draft",
+            name = name,
+            avatar = null,
+            description = _description.value.trim(),
+            personality = _personality.value,
+            backstory = _backstory.value.trim(),
+            greetingMessage = _greetingMessage.value,
+            exampleDialogues = _exampleDialogues.value,
+            voiceConfig = _voiceConfig.value,
+            behaviorRules = _behaviorRules.value,
+        )
+    }
+
     fun loadCharacterForEdit(characterId: String) {
         editingCharacterId = characterId
         viewModelScope.launch {
@@ -82,6 +134,15 @@ class CharacterCustomizationViewModel @Inject constructor(
                     _behaviorRules.value = character.behaviorRules ?: BehaviorRules.default()
                     _voiceConfig.value = character.voiceConfig ?: VoiceConfig.default()
                     _exampleDialogues.value = character.exampleDialogues
+            _scenario.value = character.scenario
+            _alternateGreetings.value = character.alternateGreetings
+            _creatorNotes.value = character.creatorNotes
+            _creator.value = character.creator
+            _characterVersion.value = character.characterVersion
+            _tags.value = character.tags
+            _systemPromptOverride.value = character.systemPromptOverride
+            _postHistoryInstructions.value = character.postHistoryInstructions
+            _characterBook.value = character.characterBook
                 } else {
                     _saveState.value = CharacterSaveState.Failure("找不到要编辑的角色")
                 }
@@ -127,6 +188,15 @@ class CharacterCustomizationViewModel @Inject constructor(
                             behaviorRules = _behaviorRules.value,
                             voiceConfig = _voiceConfig.value,
                             exampleDialogues = _exampleDialogues.value,
+                            scenario = _scenario.value,
+                            alternateGreetings = _alternateGreetings.value,
+                            creatorNotes = _creatorNotes.value,
+                            creator = _creator.value,
+                            characterVersion = _characterVersion.value,
+                            tags = _tags.value,
+                            systemPromptOverride = _systemPromptOverride.value,
+                            postHistoryInstructions = _postHistoryInstructions.value,
+                            characterBook = _characterBook.value,
                         )
                     )
                 } ?: characterManager.createCharacter(
@@ -139,6 +209,15 @@ class CharacterCustomizationViewModel @Inject constructor(
                     exampleDialogues = _exampleDialogues.value,
                     voiceConfig = _voiceConfig.value,
                     behaviorRules = _behaviorRules.value,
+                    scenario = _scenario.value,
+                    alternateGreetings = _alternateGreetings.value,
+                    creatorNotes = _creatorNotes.value,
+                    creator = _creator.value,
+                    characterVersion = _characterVersion.value,
+                    tags = _tags.value,
+                    systemPromptOverride = _systemPromptOverride.value,
+                    postHistoryInstructions = _postHistoryInstructions.value,
+                    characterBook = _characterBook.value,
                 )
                 CharacterSaveState.Success(saved.id)
             } catch (error: Exception) {
@@ -174,6 +253,57 @@ class CharacterCustomizationViewModel @Inject constructor(
                 _saveState.value = CharacterSaveState.Failure("删除失败: ${e.message}")
             } finally {
                 deleteGate.release()
+            }
+        }
+    }
+
+    fun importCharacterCard(json: String) {
+        viewModelScope.launch {
+            _importError.value = null
+            try {
+                val userId = currentUserProvider.requireUserId()
+                _pendingImportedCharacter.value = CharacterTransferCodec.parse(json, userId).getOrThrow()
+            } catch (error: Exception) {
+                _importError.value = error.message ?: "角色卡解析失败"
+            }
+        }
+    }
+
+    fun clearPendingImport() {
+        _pendingImportedCharacter.value = null
+        _importError.value = null
+    }
+
+    fun setImportError(message: String) {
+        _importError.value = message
+    }
+
+    fun confirmImportedCharacter() {
+        val imported = _pendingImportedCharacter.value ?: return
+        viewModelScope.launch {
+            try {
+                characterManager.saveImportedCharacter(imported)
+                clearPendingImport()
+            } catch (error: Exception) {
+                _importError.value = error.message ?: "角色卡保存失败"
+            }
+        }
+    }
+
+    fun clearPendingCardExport() {
+        _pendingCardExport.value = null
+    }
+
+    fun exportCharacterCard(characterId: String, format: CharacterExportFormat = CharacterExportFormat.STANDARD_JSON) {
+        viewModelScope.launch {
+            try {
+                val userId = currentUserProvider.requireUserId()
+                val character = characterManager.getCharacter(userId, characterId)
+                    ?: error("找不到要导出的角色")
+                _pendingCardExport.value = CharacterTransferCodec.fileName(character, format) to
+                    CharacterTransferCodec.serialize(character, format)
+            } catch (error: Exception) {
+                _importError.value = error.message ?: "角色卡导出失败"
             }
         }
     }
@@ -234,6 +364,19 @@ class CharacterCustomizationViewModel @Inject constructor(
         _exampleDialogues.value = value
     }
 
+    fun updateScenario(value: String) { _scenario.value = value }
+    fun updateAlternateGreetings(value: List<String>) { _alternateGreetings.value = value }
+    fun updateCreatorNotes(value: String) { _creatorNotes.value = value }
+    fun updateCreator(value: String) { _creator.value = value }
+    fun updateCharacterVersion(value: String) { _characterVersion.value = value }
+    fun updateTags(value: List<String>) { _tags.value = value }
+    fun updateSystemPromptOverride(value: String) { _systemPromptOverride.value = value }
+    fun updatePostHistoryInstructions(value: String) { _postHistoryInstructions.value = value }
+
+    fun updateCharacterBook(value: List<com.companion.cc.domain.model.CharacterBookEntry>) {
+        _characterBook.value = value
+    }
+
     fun addExampleDialogue(dialogue: ExampleDialogue) {
         _exampleDialogues.value = _exampleDialogues.value + dialogue
     }
@@ -254,6 +397,15 @@ class CharacterCustomizationViewModel @Inject constructor(
         _behaviorRules.value = BehaviorRules.default()
         _voiceConfig.value = VoiceConfig.default()
         _exampleDialogues.value = emptyList()
+        _scenario.value = ""
+        _alternateGreetings.value = emptyList()
+        _creatorNotes.value = ""
+        _creator.value = ""
+        _characterVersion.value = "1.0"
+        _tags.value = emptyList()
+        _systemPromptOverride.value = ""
+        _postHistoryInstructions.value = ""
+        _characterBook.value = emptyList()
         _currentCharacter.value = null
     }
 
@@ -274,7 +426,16 @@ class CharacterCustomizationViewModel @Inject constructor(
                     _personality.value != existing.personality ||
                     _behaviorRules.value != (existing.behaviorRules ?: BehaviorRules.default()) ||
                     _voiceConfig.value != (existing.voiceConfig ?: VoiceConfig.default()) ||
-                    _exampleDialogues.value != existing.exampleDialogues
+                    _exampleDialogues.value != existing.exampleDialogues ||
+                    _scenario.value != existing.scenario ||
+                    _alternateGreetings.value != existing.alternateGreetings ||
+                    _creatorNotes.value != existing.creatorNotes ||
+                    _creator.value != existing.creator ||
+                    _characterVersion.value != existing.characterVersion ||
+                    _tags.value != existing.tags ||
+                    _systemPromptOverride.value != existing.systemPromptOverride ||
+                    _postHistoryInstructions.value != existing.postHistoryInstructions ||
+                    _characterBook.value != existing.characterBook
         } else {
             _name.value.isNotBlank() ||
                     _description.value.isNotBlank() ||
@@ -283,7 +444,16 @@ class CharacterCustomizationViewModel @Inject constructor(
                     _personality.value != PersonalityTraits.default() ||
                     _behaviorRules.value != BehaviorRules.default() ||
                     _voiceConfig.value != VoiceConfig.default() ||
-                    _exampleDialogues.value.isNotEmpty()
+                    _exampleDialogues.value.isNotEmpty() ||
+                    _scenario.value.isNotBlank() ||
+                    _alternateGreetings.value.isNotEmpty() ||
+                    _creatorNotes.value.isNotBlank() ||
+                    _creator.value.isNotBlank() ||
+                    _characterVersion.value != "1.0" ||
+                    _tags.value.isNotEmpty() ||
+                    _systemPromptOverride.value.isNotBlank() ||
+                    _postHistoryInstructions.value.isNotBlank() ||
+                    _characterBook.value.isNotEmpty()
         }
     }
 
