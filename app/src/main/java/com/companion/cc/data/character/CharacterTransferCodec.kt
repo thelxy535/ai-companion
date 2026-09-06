@@ -133,15 +133,24 @@ object CharacterTransferCodec {
         val lines = raw.lines()
         fun value(label: String): String = lines.firstOrNull { it.trim().startsWith("$label：") }
             ?.substringAfter("：")?.trim().orEmpty()
+        fun section(title: String): String {
+            val start = lines.indexOfFirst { it.trim() == "## $title" }
+            if (start < 0) return ""
+            return lines.drop(start + 1)
+                .takeWhile { !it.trim().startsWith("#") }
+                .joinToString("\n") { it.removePrefix("- ").trim() }
+                .trim()
+        }
+        fun field(label: String): String = value(label).ifBlank { section(label) }
         val name = lines.firstOrNull { it.startsWith("# ") }?.removePrefix("# ")?.trim()
             ?: value("角色名")
         require(name.isNotBlank()) { "资料卡缺少角色名" }
         return CustomCharacter(
             id = UUID.randomUUID().toString(), userId = userId, name = name, avatar = null,
-            description = value("描述"), personality = PersonalityTraits.default(),
-            backstory = value("背景"), greetingMessage = value("开场白").ifBlank { "你好，很高兴见到你！" },
+            description = field("描述"), personality = PersonalityTraits.default(),
+            backstory = field("背景"), greetingMessage = field("开场白").ifBlank { "你好，很高兴见到你！" },
             exampleDialogues = emptyList(), voiceConfig = null, behaviorRules = BehaviorRules.default(),
-            scenario = value("场景"), creatorNotes = value("创作者备注"), tags = value("标签")
+            scenario = field("场景"), creatorNotes = field("创作者备注"), tags = field("标签")
                 .split("、", ",").map(String::trim).filter(String::isNotBlank).take(50)
         )
     }
