@@ -62,7 +62,7 @@ object CharacterTransferCodec {
 
     fun parse(raw: String, userId: String): Result<CustomCharacter> = runCatching {
         require(raw.toByteArray(Charsets.UTF_8).size <= MAX_BYTES) { "角色资料卡文件过大" }
-        val trimmed = raw.trim()
+        val trimmed = raw.trim().removePrefix("\uFEFF").trim()
         if (trimmed.startsWith("{")) {
             val root = json.parseToJsonElement(trimmed).jsonObject
             if (root["format"]?.toString()?.contains(FORMAT) == true) {
@@ -131,8 +131,15 @@ object CharacterTransferCodec {
 
     private fun fromText(raw: String, userId: String): CustomCharacter {
         val lines = raw.lines()
-        fun value(label: String): String = lines.firstOrNull { it.trim().startsWith("$label：") }
-            ?.substringAfter("：")?.trim().orEmpty()
+        fun value(label: String): String {
+            val line = lines.firstOrNull {
+                it.trim().startsWith("$label：") || it.trim().startsWith("**$label：**")
+            } ?: return ""
+            return line.trim()
+                .removePrefix("**$label：**")
+                .removePrefix("$label：")
+                .trim()
+        }
         fun section(title: String): String {
             val start = lines.indexOfFirst { it.trim() == "## $title" }
             if (start < 0) return ""

@@ -50,4 +50,16 @@ class CharacterTransferCodecTest {
         assertTrue(text.contains("角色名：夜航"))
         assertTrue(text.contains("场景：雨夜的窗边"))
     }
+
+    @Test
+    fun `imports markdown headings and bom`() {
+        val markdown = "\uFEFF" + CharacterTransferCodec.serialize(character, CharacterExportFormat.MARKDOWN)
+        val decoded = CharacterTransferCodec.parse(markdown, "markdown-user").getOrThrow()
+
+        assertEquals("夜航", decoded.name)
+        assertEquals("会在夜里写信的角色", decoded.description)
+        assertEquals("住在海边", decoded.backstory)
+        assertEquals("雨夜的窗边", decoded.scenario)
+        assertEquals("今晚想聊点什么？", decoded.greetingMessage)
+    }
 }

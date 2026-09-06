@@ -147,7 +147,7 @@ fun CharacterListScreen(
                 V9PMActionButton(
                     label = "导入角色卡",
                     icon = Icons.Default.FileOpen,
-                    onClick = { importLauncher.launch(arrayOf("application/json", "text/markdown", "text/plain")) },
+                    onClick = { importLauncher.launch(arrayOf("*/*")) },
                     modifier = Modifier
                         .padding(top = 10.dp)
                         .widthIn(min = 156.dp),
