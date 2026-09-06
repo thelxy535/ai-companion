@@ -11,6 +11,7 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import java.util.UUID
 
 enum class CharacterExportFormat(val extension: String, val mimeType: String, val label: String) {
@@ -24,7 +25,7 @@ enum class CharacterExportFormat(val extension: String, val mimeType: String, va
 object CharacterTransferCodec {
     private const val MAX_BYTES = 2 * 1024 * 1024
     private const val FORMAT = "sylora_character"
-    private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
+    private val json = Json { prettyPrint = true; ignoreUnknownKeys = true; encodeDefaults = true }
 
     @Serializable
     private data class SyloraCard(
@@ -65,7 +66,7 @@ object CharacterTransferCodec {
         val trimmed = raw.trim().removePrefix("\uFEFF").trim()
         if (trimmed.startsWith("{")) {
             val root = json.parseToJsonElement(trimmed).jsonObject
-            if (root["format"]?.toString()?.contains(FORMAT) == true) {
+            if (root["format"]?.jsonPrimitive?.content == FORMAT) {
                 return@runCatching fromSyloraCard(json.decodeFromString<SyloraCard>(trimmed), userId)
             }
             return@runCatching CharacterCardMapper.toCustomCharacter(

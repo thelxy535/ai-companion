@@ -11,7 +11,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.test.*
 import org.junit.After
 import org.junit.Assert.*
@@ -68,6 +70,21 @@ class ChatViewModelResolverTest {
         }
         applicationScope = TestScope(testDispatcher)
 
+        val stableEmotionalState = MutableStateFlow(
+            EmotionalState(Mood.CALM, 1.0f, 0.5f, 0.5f)
+        )
+        val mockEmotionalEngine = mock<com.companion.cc.domain.engine.EmotionalEngine>()
+        whenever(mockEmotionalEngine.currentState).thenReturn(stableEmotionalState)
+        whenever(mockEmotionalEngine.temperamentFor(any()))
+            .thenReturn(com.companion.cc.domain.character.TemperamentProfile.DEFAULT)
+        whenever(mockEmotionalEngine.getEmotionalState(any(), any()))
+            .thenReturn(stableEmotionalState.value)
+
+        val mockSettingsManager = mock<com.companion.cc.data.local.SettingsManager>()
+        whenever(mockSettingsManager.materialStyleFlow).thenReturn(flowOf("GLASS"))
+        whenever(mockSettingsManager.userAvatarFlow).thenReturn(flowOf(null))
+        whenever(mockSettingsManager.getCompanionAvatarFlow(any())).thenReturn(flowOf(null))
+
         viewModel = ChatViewModel(
             getMessagesUseCase = mock {
                 onBlocking { invoke(any(), any()) } doReturn flowOf(emptyList())
@@ -80,10 +97,10 @@ class ChatViewModelResolverTest {
             detectEmotionUseCase = mock(),
             messageRepository = mock(),
             memoryManagementUseCase = mock(),
+            memorySourceWriter = mock(),
+            reflectionJobScheduler = mock(),
             memoryLayerManager = memoryLayerManager,
-            emotionalEngine = mock {
-                on { currentState } doReturn MutableStateFlow(EmotionalState(Mood.CALM, 1.0f, 0.5f, 0.5f))
-            },
+            emotionalEngine = mockEmotionalEngine,
             personalityManager = personalityManager,
             contextManager = mock {
                 on { currentTopics } doReturn MutableStateFlow(emptyList())
@@ -92,9 +109,7 @@ class ChatViewModelResolverTest {
             voiceManager = mock {
                 on { recognitionResult } doReturn MutableStateFlow(null)
             },
-            settingsManager = mock {
-                on { userAvatarFlow } doReturn flowOf(null)
-            },
+            settingsManager = mockSettingsManager,
             networkMonitor = networkMonitor,
             onlineStatusManager = mock(),
             visionManager = mock(),
@@ -136,8 +151,33 @@ class ChatViewModelResolverTest {
             },
             characterPromptResolver = characterPromptResolver,
             typingStateManager = typingStateManager,
+            characterReplyAssembler = mock {
+                // 保持旧语义：透传角色 system prompt；若有 onTrace 则回调，模拟真实召回后上报
+                onBlocking { assemble(any(), any(), any(), any(), any(), any(), any()) } doAnswer { invocation ->
+                    val base = invocation.getArgument<String>(0)
+                    val onTrace = invocation.getArgument<(String) -> Unit>(5)
+                    onTrace("trace-1")
+                    base
+                }
+            },
+            innerStateRepository = mock(),
             applicationScope = applicationScope
         )
+    }
+
+    /** 供"召回失败"场景使用：让 mock 组装器触发 onRetrievalError。 */
+    private fun installFailingRetrievalAssembler() {
+        val failingAssembler = mock<com.companion.cc.domain.character.CharacterReplyAssembler> {
+            onBlocking { assemble(any(), any(), any(), any(), any(), any(), any()) } doAnswer { invocation ->
+                val base = invocation.getArgument<String>(0)
+                val onRetrievalError = invocation.getArgument<(Throwable) -> Unit>(6)
+                onRetrievalError(IllegalStateException("retrieval unavailable"))
+                base
+            }
+        }
+        val field = ChatViewModel::class.java.getDeclaredField("characterReplyAssembler")
+        field.isAccessible = true
+        field.set(viewModel, failingAssembler)
     }
 
     @After
@@ -220,7 +260,9 @@ class ChatViewModelResolverTest {
         whenever(characterPromptResolver.resolve(testCharacterId)).thenReturn(mockResolved)
 
         viewModel.setCharacter(testCharacterId)
-        advanceUntilIdle()
+        runCurrent()
+        Thread.sleep(100)
+        runCurrent()
 
         verify(characterPromptResolver).resolve(testCharacterId)
         verify(personalityManager).cacheResolvedConfig(mockConfig)
@@ -249,7 +291,9 @@ class ChatViewModelResolverTest {
             .thenThrow(UnknownCharacterException(testCharacterId))
 
         viewModel.setCharacter(testCharacterId)
-        advanceUntilIdle()
+        runCurrent()
+        Thread.sleep(100)
+        runCurrent()
 
         val error = viewModel.error.value
         assertEquals(ChatError.CharacterNotFound, error)
@@ -266,7 +310,9 @@ class ChatViewModelResolverTest {
         whenever(characterCatalog.getCharacter(testCharacterId)).thenReturn(null)
 
         viewModel.setCharacter(testCharacterId)
-        advanceUntilIdle()
+        runCurrent()
+        Thread.sleep(100)
+        runCurrent()
 
         assertEquals(ChatError.CharacterNotFound, viewModel.error.value)
 
@@ -304,6 +350,8 @@ class ChatViewModelResolverTest {
             viewModel.sendState.value
         )
         assertFalse(viewModel.isLoading.value)
+        assertEquals(null, viewModel.activeStream.value)
+        assertTrue(viewModel.messages.value.none { it.role == MessageRole.ASSISTANT })
         verify(typingStateManager).stopTyping(testCharacterId)
     }
 
@@ -341,6 +389,8 @@ class ChatViewModelResolverTest {
             viewModel.sendState.value
         )
         assertFalse(viewModel.isLoading.value)
+        assertEquals(null, viewModel.activeStream.value)
+        assertTrue(viewModel.messages.value.none { it.role == MessageRole.ASSISTANT })
         verify(typingStateManager).stopTyping(testCharacterId)
     }
 
@@ -379,6 +429,8 @@ class ChatViewModelResolverTest {
             viewModel.sendState.value
         )
         assertFalse(viewModel.isLoading.value)
+        assertEquals(null, viewModel.activeStream.value)
+        assertTrue(viewModel.messages.value.none { it.role == MessageRole.ASSISTANT })
         verify(typingStateManager).stopTyping(testCharacterId)
     }
 
@@ -424,6 +476,7 @@ class ChatViewModelResolverTest {
         )
         whenever(memoryRetrievalService.retrieve(any(), any(), any()))
             .thenThrow(IllegalStateException("retrieval unavailable"))
+        installFailingRetrievalAssembler()
 
         viewModel.sendMessage(testCharacterId, "hello")
         advanceUntilIdle()

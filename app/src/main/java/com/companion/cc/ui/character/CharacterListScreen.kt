@@ -199,7 +199,7 @@ fun CharacterListScreen(
                             onStartChat = { onStartChat(character.id) },
                             onEdit = { onEditCharacter(character.id) },
                             onDelete = { onDeleteCharacter(character.id) },
-                            onExport = if (character.isCustom()) { format -> viewModel.exportCharacterCard(character.id, format) } else null
+                            onExport = { format -> viewModel.exportCharacterCard(character.id, format) }
                         )
                     }
                 }

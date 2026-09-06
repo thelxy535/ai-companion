@@ -299,6 +299,21 @@ class CharacterCustomizationViewModel @Inject constructor(
             try {
                 val userId = currentUserProvider.requireUserId()
                 val character = characterManager.getCharacter(userId, characterId)
+                    ?: characterCatalog.getCharacter(characterId)?.let { listed ->
+                        CustomCharacter(
+                            id = listed.id,
+                            userId = userId,
+                            name = listed.name,
+                            avatar = listed.avatar,
+                            description = listed.description,
+                            personality = PersonalityTraits.default(),
+                            backstory = listed.description,
+                            greetingMessage = "你好，很高兴见到你！",
+                            exampleDialogues = emptyList(),
+                            voiceConfig = null,
+                            behaviorRules = BehaviorRules.default()
+                        )
+                    }
                     ?: error("找不到要导出的角色")
                 _pendingCardExport.value = CharacterTransferCodec.fileName(character, format) to
                     CharacterTransferCodec.serialize(character, format)
