@@ -1,4 +1,4 @@
-# CC Vision Gateway
+# SYLORA Vision Gateway
 
 受控的本机 FastAPI 视觉网关。服务只应监听 `127.0.0.1:8787`，只向本机 Ollama 的固定接口发送视觉分析请求，不是通用代理。
 

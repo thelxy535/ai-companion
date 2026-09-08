@@ -6,6 +6,31 @@ build/
 # Local worktrees
 .worktrees/
 
+# Local agent/editor state
+.claude/
+
+# Local design notes and generated inspection artifacts
+/tmp/
+/docs/archive/
+/docs/codebase/
+/docs/superpowers/
+/*.png
+/*.xml
+/*.html
+/*.log
+/*.md
+!README.md
+!CHANGELOG.md
+!TESTING_GUIDE.md
+!VERSION_MANAGEMENT.md
+!CONTRIBUTING.md
+!SECURITY.md
+/设计文档/
+/fix_all_colors.sh
+/install-and-test.bat
+/test-project.sh
+/test_all_features.sh
+
 # Android
 *.apk
 *.ap_
