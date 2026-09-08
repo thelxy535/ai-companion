@@ -3,10 +3,15 @@ package com.companion.cc.ui.home
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.StrokeCap
 import com.companion.cc.ui.designsystem.staggerRise
 import com.companion.cc.ui.designsystem.rememberStaggerFirstPlay
 import com.companion.cc.ui.designsystem.pressableV5
@@ -26,6 +31,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.composed
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -81,7 +87,7 @@ fun ImmersiveHomeScreen(
         modifier = Modifier
             .auroraScreenBackground(night),
         topBar = {
-            // V7 view-head：大标题（避开顶部状态胶囊区域：胶囊高约 44dp + 边距）
+            // 夜航星环：标题先建立关系感，统计信息退到辅助层。
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -89,7 +95,7 @@ fun ImmersiveHomeScreen(
             ) {
                 Text(
                     modifier = Modifier.staggerRise(staggerPlay, 0, durationMillis = 220),
-                    text = "消息",
+                    text = "今晚，和谁保持联络",
                     style = MaterialTheme.typography.headlineLarge,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
@@ -109,7 +115,11 @@ fun ImmersiveHomeScreen(
                 }
                 Text(
                     modifier = Modifier.staggerRise(staggerPlay, 1, intervalMs = 40, durationMillis = 220),
-                    text = "$totalCount 位角色 · $onlineCount 位在线",
+                    text = when {
+                        totalCount == 0 -> "你的星图还在等第一颗星"
+                        onlineCount == totalCount -> "$totalCount 位角色，都还在这里"
+                        else -> "$totalCount 位角色 · $onlineCount 位在线"
+                    },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -152,35 +162,37 @@ fun ImmersiveHomeScreen(
                 viewModel.prewarmMessageCaches(state.items)
             }
                 if (state.items.isEmpty()) {
-                    // V9PM 消息页空状态：emoji aura 圆底 96dp → 标题 → 副标题 → CTA 药丸（m-rise 进场）
+                    // 空状态是邀请，不是错误：让用户知道这里会逐渐长出自己的星图。
                     val emptyStagger = com.companion.cc.ui.designsystem.rememberStaggerFirstPlay("home-empty")
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(padding),
+                            .padding(padding)
+                            .clip(RoundedCornerShape(28.dp))
+                            .orbitAtmosphere(night),
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Box(
                                 modifier = Modifier
-                                    .size(96.dp)
+                                    .size(88.dp)
                                     .clip(androidx.compose.foundation.shape.CircleShape)
                                     .background(
                                         Brush.radialGradient(
                                             listOf(
-                                                MaterialTheme.colorScheme.primary.copy(alpha = 0.28f),
-                                                MaterialTheme.colorScheme.primary.copy(alpha = 0.05f)
+                                                MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
+                                                MaterialTheme.colorScheme.primary.copy(alpha = 0.03f)
                                             )
                                         )
                                     )
                                     .staggerRise(emptyStagger, 0),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text("💬", fontSize = 64.sp)
+                                Text("✦", fontSize = 48.sp, color = MaterialTheme.colorScheme.primary)
                             }
                             Spacer(modifier = Modifier.height(18.dp))
                             Text(
-                                "和 TA 开始对话吧",
+                                "还没有哪颗星亮起",
                                 fontSize = (17f * LocalFontScale.current).sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onSurface,
@@ -188,7 +200,7 @@ fun ImmersiveHomeScreen(
                             )
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                "一切从这里开始",
+                                "去认识一个人，让这里慢慢有故事",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.staggerRise(emptyStagger, 2, intervalMs = 60)
@@ -207,7 +219,7 @@ fun ImmersiveHomeScreen(
                                     .staggerRise(emptyStagger, 3, intervalMs = 60)
                             ) {
                                 Text(
-                                    "开始聊天",
+                                    "去认识一个人",
                                     color = Color.White,
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 14.sp
@@ -220,6 +232,8 @@ fun ImmersiveHomeScreen(
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(padding)
+                            .clip(RoundedCornerShape(28.dp))
+                            .orbitAtmosphere(night)
                             .background(Color.Transparent),
                         contentPadding = PaddingValues(vertical = 8.dp)
                     ) {
@@ -294,14 +308,26 @@ fun ChatListItem(
             Column(
                 modifier = Modifier.weight(1f)
             ) {
-                Text(
-                    text = item.character.name,
-                    style = MaterialTheme.typography.titleMedium.copy(fontSize = (17f * com.companion.cc.ui.theme.LocalFontScale.current).sp),
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = item.character.name,
+                        style = MaterialTheme.typography.titleMedium.copy(fontSize = (17f * com.companion.cc.ui.theme.LocalFontScale.current).sp),
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    if (item.hasUnreadMessage) {
+                        Spacer(modifier = Modifier.width(7.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary)
+                        )
+                    }
+                }
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = when {
@@ -353,6 +379,42 @@ fun ChatListItem(
                 }
             }
         }
+    }
+}
+
+/**
+ * 首页专属的低对比度轨道。它只提供空间气氛，不参与内容布局，也不拦截点击。
+ */
+private fun Modifier.orbitAtmosphere(isNight: Boolean): Modifier = composed {
+    val transition = rememberInfiniteTransition(label = "home-orbit")
+    val pulse by transition.animateFloat(
+        initialValue = 0.72f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(4200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "home-orbit-pulse"
+    )
+    drawBehind {
+        val line = if (isNight) Color(0xFF9CC8FF) else Color(0xFF56729E)
+        val alpha = (if (isNight) 0.11f else 0.08f) * pulse
+        val center = Offset(size.width * 0.88f, size.height * 0.16f)
+        val orbitSize = Size(size.width * 1.24f, size.width * 0.62f)
+        drawArc(
+            color = line.copy(alpha = alpha),
+            startAngle = 158f,
+            sweepAngle = 142f,
+            useCenter = false,
+            topLeft = Offset(center.x - orbitSize.width / 2f, center.y - orbitSize.height / 2f),
+            size = orbitSize,
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.2.dp.toPx(), cap = StrokeCap.Round)
+        )
+        drawCircle(
+            color = line.copy(alpha = alpha * 1.8f),
+            radius = 2.5.dp.toPx(),
+            center = Offset(size.width * 0.79f, size.height * 0.08f)
+        )
     }
 }
 /**
