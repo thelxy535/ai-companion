@@ -2,13 +2,13 @@ package com.companion.cc
 
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
-import android.view.WindowManager
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.lifecycle.lifecycleScope
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -24,9 +24,21 @@ import com.companion.cc.ui.theme.AppVisualTheme
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import android.content.Context
+import android.app.ActivityManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import com.companion.cc.util.NotificationPermissionPolicy
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { }
 
     @Inject
     lateinit var settingsManager: SettingsManager
@@ -40,6 +52,17 @@ class MainActivity : ComponentActivity() {
 
         super.onCreate(savedInstanceState)
 
+        requestNotificationPermissionIfNeeded()
+
+        // Keep the recent-apps card in sync with the launcher and system splash icon.
+        setTaskDescription(
+            ActivityManager.TaskDescription(
+                getString(R.string.app_name_nexus),
+                launcherTaskBitmap(),
+                android.graphics.Color.rgb(16, 19, 28)
+            )
+        )
+
         // V7 沉浸式：必须在 super.onCreate 之后设置（窗口初始化完成后才生效）
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.auto(
@@ -52,13 +75,10 @@ class MainActivity : ComponentActivity() {
             )
         )
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        // 隐藏系统状态栏；状态栏区域由应用自带 V7 状态栏接管
-        window.setFlags(
-            android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN,
-            android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN
-        )
         val insetsController = WindowInsetsControllerCompat(window, window.decorView)
-        insetsController.hide(WindowInsetsCompat.Type.systemBars())
+        // 状态栏区域由应用自带 V7 状态栏接管；保留透明导航栏，避免
+        // MIUI 在强制隐藏导航栏时额外合成一条不连续的深色保护区。
+        insetsController.hide(WindowInsetsCompat.Type.statusBars())
         insetsController.systemBarsBehavior =
             WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
 
@@ -66,8 +86,8 @@ class MainActivity : ComponentActivity() {
         val sharedPrefs = getSharedPreferences("cc_v7_prefs", Context.MODE_PRIVATE)
         val lastReminder = sharedPrefs.getLong("last_reminder_at", 0L)
         val now = System.currentTimeMillis()
-        CoroutineScope(Dispatchers.Main).launch {
-            val prefOn = com.companion.cc.data.local.SettingsManager.isNotificationPrefEnabled(applicationContext)
+        lifecycleScope.launch {
+            val prefOn = settingsManager.isNotificationEnabled()
             if (prefOn && now - lastReminder >= 24 * 60 * 60 * 1000L) {
                 com.companion.cc.util.NotificationHelper.sendChatReminderNotification(applicationContext)
                 sharedPrefs.edit().putLong("last_reminder_at", now).apply()
@@ -99,13 +119,42 @@ class MainActivity : ComponentActivity() {
             ) {
                 CCApp(
                     themeMode = themeMode,
+                    openMemoryInboxCompanionId = intent?.getStringExtra("memory_inbox_companion_id"),
+                    openCompanionId = intent?.getStringExtra("open_companion_id"),
                     onThemeModeChange = { mode ->
-                        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                        lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                             settingsManager.saveThemeMode(mode)
                         }
                     }
                 )
             }
         }
+    }
+
+    /** Draw the same adaptive launcher resource used by the desktop into the recent-task bitmap. */
+    private fun launcherTaskBitmap(): Bitmap {
+        val size = 192
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val drawable = resources.getDrawable(R.mipmap.ic_launcher_sylora_blue, theme)
+        drawable.setBounds(0, 0, size, size)
+        drawable.draw(Canvas(bitmap))
+        return bitmap
+    }
+
+    private fun requestNotificationPermissionIfNeeded() {
+        if (!NotificationPermissionPolicy.requiresRuntimePermission()) return
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+        ) return
+        if (!SettingsManager.isNotificationPrefEnabled(this)) return
+
+        val prefs = getSharedPreferences("cc_v7_prefs", Context.MODE_PRIVATE)
+        if (prefs.getBoolean("notification_permission_prompted", false)) return
+        prefs.edit().putBoolean("notification_permission_prompted", true).apply()
+        window.decorView.postDelayed({
+            if (!isFinishing && !isDestroyed) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }, 700L)
     }
 }

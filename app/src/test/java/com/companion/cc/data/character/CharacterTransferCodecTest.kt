@@ -62,4 +62,34 @@ class CharacterTransferCodecTest {
         assertEquals("雨夜的窗边", decoded.scenario)
         assertEquals("今晚想聊点什么？", decoded.greetingMessage)
     }
+
+    @Test
+    fun `markdown import preserves custom humanization traits`() {
+        val markdown = """
+            # 夜航
+            ## 描述
+            会在夜里写信的角色
+            ## 背景
+            住在海边
+            ## 人格
+            - 语言习惯：先停一下再回答，熟悉后会轻轻吐槽
+            - 冲突方式：先安静，认真回应后慢慢松动
+        """.trimIndent()
+
+        val decoded = CharacterTransferCodec.parse(markdown, "traits-user").getOrThrow()
+
+        assertEquals("先停一下再回答，熟悉后会轻轻吐槽", decoded.personality.customTraits["语言习惯"])
+        assertEquals("先安静，认真回应后慢慢松动", decoded.personality.customTraits["冲突方式"])
+    }
+
+    @Test
+    fun `all supported formats can be imported after export`() {
+        CharacterExportFormat.values().forEach { format ->
+            val encoded = CharacterTransferCodec.serialize(character, format)
+            val decoded = CharacterTransferCodec.parse(encoded, "round-trip-user").getOrThrow()
+
+            assertEquals(format.name, character.name, decoded.name)
+            assertEquals(format.name, "round-trip-user", decoded.userId)
+        }
+    }
 }

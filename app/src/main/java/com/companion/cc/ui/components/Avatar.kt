@@ -2,7 +2,7 @@ package com.companion.cc.ui.components
 
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.border
-import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.runtime.remember
 import androidx.compose.foundation.layout.wrapContentSize
@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.SubcomposeAsyncImage
+import coil.compose.AsyncImage
 import coil.request.ImageRequest
 
 /**
@@ -52,7 +53,7 @@ fun Avatar(
     backgroundColor: Color? = null,
     onClick: (() -> Unit)? = null,
     showRing: Boolean = false,
-    showStatusDot: Boolean = false,
+    showOnlineRing: Boolean = false,
 ) {
     val modifier = if (onClick != null) {
         Modifier
@@ -69,82 +70,65 @@ fun Avatar(
 
     // V7 aura 底：radial-gradient(circle at 38% 34%, #fff 0%, aura 34%, deep 92%)
     val base = backgroundColor ?: MaterialTheme.colorScheme.primaryContainer
+    val context = LocalContext.current
+    val imageRequest = remember(context, avatarUrl) {
+        avatarUrl?.let {
+            ImageRequest.Builder(context)
+                .data(it)
+                .crossfade(true)
+                .build()
+        }
+    }
     // V7 aura：radial-gradient(circle at 38% 34%, #fff 0%, aura 34%, deep 92%)
     // Compose Brush.radialGradient 的 center 是像素坐标（0.38px≈0），所以之前"纯色"。
     // 用 drawBehind 手绘：白高光小圆(偏左上) + 主色大圆 + 暗边描边，三层叠加稳定可控
     val auraDeep = base.darken(0.42f)
     Box(
-        modifier = modifier.drawBehind {
+        modifier = modifier.drawWithCache {
             val dims = this.size
             val r = minOf(dims.width, dims.height) / 2f
             val cx = dims.width / 2f
             val cy = dims.height / 2f
-            // 主色底
-            drawCircle(color = base, radius = r, center = Offset(cx, cy))
-            // 高光白雾（中心偏左上 38%,34%，半径 0.55r）
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(Color.White.copy(alpha = 0.9f), Color.Transparent),
-                    center = Offset(dims.width * 0.38f, dims.height * 0.34f),
-                    radius = r * 0.85f
-                ),
-                radius = r,
-                center = Offset(cx, cy)
+            val highlightBrush = Brush.radialGradient(
+                colors = listOf(Color.White.copy(alpha = 0.9f), Color.Transparent),
+                center = Offset(dims.width * 0.38f, dims.height * 0.34f),
+                radius = r * 0.85f
             )
-            // 右下暗缘
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(Color.Transparent, auraDeep.copy(alpha = 0.55f)),
-                    center = Offset(dims.width * 0.62f, dims.height * 0.66f),
-                    radius = r * 1.05f
-                ),
-                radius = r,
-                center = Offset(cx, cy)
+            val edgeBrush = Brush.radialGradient(
+                colors = listOf(Color.Transparent, auraDeep.copy(alpha = 0.55f)),
+                center = Offset(dims.width * 0.62f, dims.height * 0.66f),
+                radius = r * 1.05f
             )
+            onDrawBehind {
+                drawCircle(color = base, radius = r, center = Offset(cx, cy))
+                drawCircle(brush = highlightBrush, radius = r, center = Offset(cx, cy))
+                drawCircle(brush = edgeBrush, radius = r, center = Offset(cx, cy))
+            }
         },
         contentAlignment = Alignment.Center
     ) {
         when {
                 // 1. 优先显示自定义头像
                 !avatarUrl.isNullOrBlank() -> {
-                    SubcomposeAsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current)
-                            .data(avatarUrl)
-                            .crossfade(true)
-                            .build(),
-                        contentDescription = "头像",
+                    // V9PM：emoji 永久垫底 + 图片覆盖（AsyncImage 零子组合——SubcomposeAsyncImage 的嵌套子组合是进页卡顿源）
+                    Box(
                         modifier = Modifier.size(size),
-                        contentScale = ContentScale.Crop,
-                        loading = {
-                            // 加载中显示进度指示器
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(size * 0.5f),
-                                strokeWidth = 2.dp
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (!emoji.isNullOrBlank()) {
+                            Text(
+                                text = emoji,
+                                fontSize = emojiSize,
+                                modifier = Modifier.wrapContentSize(Alignment.Center)
                             )
-                        },
-                        error = {
-                            // 加载失败显示错误图标或降级到 emoji/默认图标
-                            if (!emoji.isNullOrBlank()) {
-                                Box(
-                                    modifier = Modifier.size(size),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = emoji,
-                                        fontSize = emojiSize,
-                                        modifier = Modifier.wrapContentSize(Alignment.Center)
-                                    )
-                                }
-                            } else {
-                                Icon(
-                                    imageVector = Icons.Default.BrokenImage,
-                                    contentDescription = "加载失败",
-                                    modifier = Modifier.size(size * 0.6f),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                                )
-                            }
                         }
-                    )
+                        AsyncImage(
+                            model = imageRequest,
+                            contentDescription = "头像",
+                            modifier = Modifier.size(size),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
                 }
                 // 2. 其次显示 emoji
                 !emoji.isNullOrBlank() -> {
@@ -169,37 +153,25 @@ fun Avatar(
                     )
                 }
             }
-        // V7 头像光环 ring：白 rim（内 1.5dp）+ aura 光晕（外 2dp）双层
-        if (showRing) {
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .border(1.5.dp, Color.White.copy(alpha = 0.6f), CircleShape)
-            )
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .padding(1.dp)
-                    .border(2.dp, base.copy(alpha = 0.45f), CircleShape)
-            )
-        }
-        // V7 状态点 st：右下 11dp 绿点白边
-        if (showStatusDot) {
-            // 内缩 2dp 防止被 clip 裁掉，白边用内层 border 实现
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(2.dp)
-                    .size(13.dp)
-                    .background(Color.White, CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(9.dp)
-                        .background(Color(0xFF2EA985), CircleShape)
-                )
+        // 在线状态直接使用头像边缘光环，避免右下角状态点遮挡头像内容。
+        if (showRing || showOnlineRing) {
+            val ringColor = if (showOnlineRing) Color(0xFF2EA985) else Color.White.copy(alpha = 0.6f)
+            val innerRingColor = if (showOnlineRing) {
+                Color(0xFFB8F4DF).copy(alpha = 0.82f)
+            } else {
+                base.copy(alpha = 0.45f)
             }
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .border(if (showOnlineRing) 2.dp else 1.5.dp, ringColor, CircleShape)
+            )
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .padding(if (showOnlineRing) 2.dp else 1.dp)
+                    .border(if (showOnlineRing) 1.dp else 2.dp, innerRingColor, CircleShape)
+            )
         }
     }
     }
@@ -233,7 +205,7 @@ fun CompanionAvatar(
     emoji: String,
     size: Dp = 40.dp,
     onClick: (() -> Unit)? = null,
-    showStatusDot: Boolean = false,
+    showOnlineRing: Boolean = false,
 ) {
     Avatar(
         avatarUrl = avatarUrl,
@@ -243,7 +215,7 @@ fun CompanionAvatar(
         backgroundColor = androidx.compose.ui.graphics.Color(0xFF8FB8FF),
         onClick = onClick,
         showRing = true,
-        showStatusDot = showStatusDot
+        showOnlineRing = showOnlineRing
     )
 }
 

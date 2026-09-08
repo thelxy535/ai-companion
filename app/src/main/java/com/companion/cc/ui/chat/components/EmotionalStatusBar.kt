@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.companion.cc.domain.model.EmotionalState
 import com.companion.cc.domain.model.Mood
+import com.companion.cc.ui.components.V9PMIconButton
 
 /**
  * 情感状态栏（紧凑显示）
@@ -172,13 +173,14 @@ fun TTSSpeakingIndicator(
             )
         }
 
-        IconButton(onClick = onStop) {
-            Icon(
-                imageVector = Icons.Default.Stop,
-                contentDescription = "停止播放",
-                tint = MaterialTheme.colorScheme.onSecondaryContainer
-            )
-        }
+        V9PMIconButton(
+            icon = Icons.Default.Stop,
+            contentDescription = "停止播放",
+            onClick = onStop,
+            size = 42.dp,
+            iconSize = 18.dp,
+            tint = MaterialTheme.colorScheme.onSecondaryContainer
+        )
     }
 }
 

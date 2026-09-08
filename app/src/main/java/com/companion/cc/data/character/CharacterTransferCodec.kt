@@ -5,7 +5,10 @@ import com.companion.cc.domain.model.CharacterBookEntry
 import com.companion.cc.domain.model.CustomCharacter
 import com.companion.cc.domain.model.ExampleDialogue
 import com.companion.cc.domain.model.PersonalityTraits
+import com.companion.cc.domain.model.naturalDescription
+import com.companion.cc.domain.model.withNaturalDescription
 import com.companion.cc.domain.model.VoiceConfig
+import com.companion.cc.domain.character.CompanionRhythm
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -48,7 +51,8 @@ object CharacterTransferCodec {
         val tags: List<String> = emptyList(),
         val systemPromptOverride: String = "",
         val postHistoryInstructions: String = "",
-        val characterBook: List<CharacterBookEntry> = emptyList()
+        val characterBook: List<CharacterBookEntry> = emptyList(),
+        val rhythm: CompanionRhythm = CompanionRhythm()
     )
 
     fun serialize(character: CustomCharacter, format: CharacterExportFormat): String = when (format) {
@@ -84,7 +88,8 @@ object CharacterTransferCodec {
         alternateGreetings = c.alternateGreetings, creatorNotes = c.creatorNotes,
         creator = c.creator, characterVersion = c.characterVersion, tags = c.tags,
         systemPromptOverride = c.systemPromptOverride,
-        postHistoryInstructions = c.postHistoryInstructions, characterBook = c.characterBook
+        postHistoryInstructions = c.postHistoryInstructions, characterBook = c.characterBook,
+        rhythm = c.rhythm
     )
 
     private fun fromSyloraCard(c: SyloraCard, userId: String) = CustomCharacter(
@@ -96,7 +101,8 @@ object CharacterTransferCodec {
         alternateGreetings = c.alternateGreetings.take(20), creatorNotes = c.creatorNotes,
         creator = c.creator, characterVersion = c.characterVersion, tags = c.tags.take(50),
         systemPromptOverride = c.systemPromptOverride,
-        postHistoryInstructions = c.postHistoryInstructions, characterBook = c.characterBook.take(100)
+        postHistoryInstructions = c.postHistoryInstructions, characterBook = c.characterBook.take(100),
+        rhythm = c.rhythm
     )
 
     private fun markdown(c: CustomCharacter): String = buildString {
@@ -107,6 +113,7 @@ object CharacterTransferCodec {
         section("开场白", c.greetingMessage)
         if (c.alternateGreetings.isNotEmpty()) section("备用开场白", c.alternateGreetings.joinToString("\n- ", prefix = "- "))
         section("人格", c.personality.customTraits.entries.joinToString("\n") { "- ${it.key}：${it.value}" })
+        section("人格底色", c.personality.naturalDescription())
         section("创作者备注", c.creatorNotes)
         if (c.tags.isNotEmpty()) appendLine("**标签：** ${c.tags.joinToString("、")}")
         if (c.exampleDialogues.isNotEmpty()) {
@@ -149,13 +156,30 @@ object CharacterTransferCodec {
                 .joinToString("\n") { it.removePrefix("- ").trim() }
                 .trim()
         }
+        fun personalityTraits(): Map<String, String> = run {
+            val start = lines.indexOfFirst { it.trim() == "## 人格" }
+            if (start < 0) return@run emptyMap()
+            lines.drop(start + 1)
+                .takeWhile { !it.trim().startsWith("#") }
+                .mapNotNull { line ->
+                    val value = line.trim().removePrefix("- ")
+                    val separator = value.indexOf('：')
+                    if (separator <= 0) null
+                    else value.substring(0, separator).trim() to value.substring(separator + 1).trim()
+                }
+                .filter { it.first.isNotBlank() && it.second.isNotBlank() }
+                .toMap()
+        }
         fun field(label: String): String = value(label).ifBlank { section(label) }
         val name = lines.firstOrNull { it.startsWith("# ") }?.removePrefix("# ")?.trim()
             ?: value("角色名")
         require(name.isNotBlank()) { "资料卡缺少角色名" }
+        val importedTraits = personalityTraits()
         return CustomCharacter(
             id = UUID.randomUUID().toString(), userId = userId, name = name, avatar = null,
-            description = field("描述"), personality = PersonalityTraits.default(),
+            description = field("描述"), personality = PersonalityTraits.default().copy(
+                customTraits = importedTraits
+            ).withNaturalDescription(field("人格底色")),
             backstory = field("背景"), greetingMessage = field("开场白").ifBlank { "你好，很高兴见到你！" },
             exampleDialogues = emptyList(), voiceConfig = null, behaviorRules = BehaviorRules.default(),
             scenario = field("场景"), creatorNotes = field("创作者备注"), tags = field("标签")

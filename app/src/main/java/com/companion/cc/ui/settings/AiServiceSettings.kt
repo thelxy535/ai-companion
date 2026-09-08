@@ -2,6 +2,8 @@ package com.companion.cc.ui.settings
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -13,13 +15,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.companion.cc.domain.model.AIProvider
 import com.companion.cc.ui.components.UtilityDivider
+import com.companion.cc.ui.components.V9PMActionButton
+import com.companion.cc.ui.components.V9PMChoiceRow
+import com.companion.cc.ui.components.V9PMDialogSurface
+import com.companion.cc.ui.components.V9PMTextField
 import com.companion.cc.ui.components.UtilitySection
 import com.companion.cc.ui.theme.LocalVisualTheme
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material3.IconButton
 
 @Composable
 internal fun ProviderStatusSection(
@@ -54,7 +59,12 @@ internal fun ProviderStatusSection(
                 )
             }
             if (connected) {
-                TextButton(onClick = onTestConnection) { Text("测试") }
+                V9PMActionButton(
+                    label = "测试",
+                    onClick = onTestConnection,
+                    modifier = Modifier.width(72.dp),
+                    height = 40.dp
+                )
             }
         }
         if (connected) {
@@ -87,23 +97,16 @@ internal fun ApiConfigSection(
 ) {
     UtilitySection(title = "API 配置", icon = Icons.Default.Key) {
         var showKey by remember { mutableStateOf(false) }
-        OutlinedTextField(
+        V9PMTextField(
             value = apiKey,
             onValueChange = onApiKeyChange,
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("API Key") },
-            placeholder = { Text("***") },
-            leadingIcon = { Icon(Icons.Default.Key, contentDescription = null) },
-            trailingIcon = {
-                IconButton(onClick = { showKey = !showKey }) {
-                    Icon(
-                        if (showKey) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                        contentDescription = if (showKey) "隐藏" else "显示"
-                    )
-                }
-            },
-            visualTransformation = if (showKey) VisualTransformation.None else PasswordVisualTransformation(),
-            singleLine = true
+            label = "API Key",
+            placeholder = "粘贴 API Key",
+            leadingIcon = Icons.Default.Key,
+            trailingIcon = if (showKey) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+            onTrailingIconClick = { showKey = !showKey },
+            visualTransformation = if (showKey) VisualTransformation.None else PasswordVisualTransformation()
         )
         Spacer(Modifier.height(8.dp))
         Text(
@@ -112,21 +115,13 @@ internal fun ApiConfigSection(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(Modifier.height(12.dp))
-        Button(
+        V9PMActionButton(
+            label = if (isValidating) "验证中..." else "验证并保存",
             onClick = onValidate,
             enabled = apiKey.isNotBlank() && !isValidating,
+            icon = if (isValidating) null else Icons.Default.Check,
             modifier = Modifier.fillMaxWidth()
-        ) {
-            if (isValidating) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(18.dp),
-                    strokeWidth = 2.dp,
-                    color = MaterialTheme.colorScheme.onPrimary
-                )
-                Spacer(Modifier.width(8.dp))
-            }
-            Text(if (isValidating) "验证中..." else "验证并保存")
-        }
+        )
         validationMessage?.let { message ->
             Spacer(Modifier.height(12.dp))
             val success = currentProvider != null
@@ -179,39 +174,31 @@ internal fun ModelSelectionSection(
     }
 
     if (showModelDialog) {
-        AlertDialog(
-            onDismissRequest = { showModelDialog = false },
-            title = { Text("选择模型") },
-            text = {
-                Column {
+        V9PMDialogSurface(onDismissRequest = { showModelDialog = false }) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text("选择模型", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                Column(modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
                     availableModels.forEach { model ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    onModelChange(model)
-                                    showModelDialog = false
-                                }
-                                .padding(vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            RadioButton(
-                                selected = selectedModel == model,
-                                onClick = {
-                                    onModelChange(model)
-                                    showModelDialog = false
-                                }
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text(model)
-                        }
+                        V9PMChoiceRow(
+                            title = model,
+                            selected = selectedModel == model,
+                            onClick = {
+                                onModelChange(model)
+                                showModelDialog = false
+                            },
+                            modifier = Modifier.padding(vertical = 2.dp),
+                            trailing = {
+                                RadioButton(selected = selectedModel == model, onClick = null)
+                            }
+                        )
                     }
                 }
-            },
-            confirmButton = {
-                TextButton(onClick = { showModelDialog = false }) { Text("取消") }
+                V9PMActionButton(label = "取消", onClick = { showModelDialog = false }, height = 40.dp)
             }
-        )
+        }
     }
 }
 
@@ -274,13 +261,12 @@ internal fun AdvancedSettingsSection(
         AnimatedVisibility(expanded) {
             Column {
                 UtilityDivider()
-                OutlinedTextField(
+                V9PMTextField(
                     value = baseUrl,
                     onValueChange = onBaseUrlChange,
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Base URL") },
-                    placeholder = { Text("https://api.example.com/v1") },
-                    singleLine = true
+                    label = "Base URL",
+                    placeholder = "https://api.example.com/v1"
                 )
             }
         }

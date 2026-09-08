@@ -1,6 +1,8 @@
 package com.companion.cc.ui.character
 
 import com.companion.cc.ui.designsystem.auroraScreenBackground
+import com.companion.cc.ui.components.V9PMActionButton
+import com.companion.cc.ui.components.V9PMTopBar
 import com.companion.cc.ui.theme.LocalVisualTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -9,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -52,18 +55,14 @@ fun MemoryCapsuleVaultScreen(
     Scaffold(
         modifier = Modifier.auroraScreenBackground(LocalVisualTheme.current.tokens.backdrop.isDark),
         topBar = {
-            TopAppBar(
-                modifier = Modifier.padding(top = 40.dp),
+            V9PMTopBar(
                 title = { Text("记忆胶囊库") },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "返回")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                onNavigateBack = onNavigateBack,
+                modifier = Modifier.padding(top = 40.dp)
             )
         },
-        containerColor = Color.Transparent
+        containerColor = Color.Transparent,
+        contentColor = MaterialTheme.colorScheme.onSurface
     ) { padding ->
         when (val current = state) {
             MemoryCapsuleVaultState.Idle,
@@ -104,7 +103,7 @@ fun MemoryCapsuleVaultScreen(
                 ) {
                     Text("胶囊库加载失败", style = MaterialTheme.typography.titleLarge)
                     Text(current.message, color = MaterialTheme.colorScheme.error)
-                    OutlinedButton(onClick = viewModel::load) { Text("重试") }
+                    V9PMActionButton(label = "重试", onClick = viewModel::load, modifier = Modifier.fillMaxWidth())
                 }
         }
     }
@@ -163,7 +162,7 @@ private fun CapsuleRow(capsule: CapsuleSummary, onOpenRevival: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            TextButton(onClick = onOpenRevival) { Text("恢复") }
+            V9PMActionButton(label = "恢复", onClick = onOpenRevival, modifier = Modifier.widthIn(min = 96.dp), height = 40.dp)
         }
         Divider(color = MaterialTheme.colorScheme.outlineVariant)
     }

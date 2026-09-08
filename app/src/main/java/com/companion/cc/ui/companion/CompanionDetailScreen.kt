@@ -1,6 +1,8 @@
 package com.companion.cc.ui.companion
 
 import com.companion.cc.ui.designsystem.auroraScreenBackground
+import com.companion.cc.ui.components.V9PMIconButton
+import com.companion.cc.ui.components.V9PMTopBar
 import com.companion.cc.ui.theme.LocalVisualTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -23,6 +25,7 @@ import com.companion.cc.ui.components.UtilitySection
 import com.companion.cc.ui.settings.AvatarSettingsDialog
 import java.util.concurrent.TimeUnit
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -66,25 +69,21 @@ private fun CompanionDetailContent(
 ) {
     val character = state.character
     val resolvedAvatar = remember(state.avatar, character.avatar, character.name) {
-        CharacterAvatarResolver.resolve(state.avatar ?: character.avatar, character.name)
+        CharacterAvatarResolver.resolve(character, state.avatar)
     }
     var showAvatarDialog by remember(character.id) { mutableStateOf(false) }
 
     Scaffold(
         modifier = Modifier.auroraScreenBackground(LocalVisualTheme.current.tokens.backdrop.isDark),
         topBar = {
-            TopAppBar(
-                modifier = Modifier.padding(top = 44.dp),
+            V9PMTopBar(
                 title = { Text("关于她") },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "返回")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                onNavigateBack = onNavigateBack,
+                modifier = Modifier.padding(top = 44.dp)
             )
         },
-        containerColor = Color.Transparent
+        containerColor = Color.Transparent,
+        contentColor = MaterialTheme.colorScheme.onSurface
     ) { padding ->
         Column(
             modifier = Modifier
@@ -101,17 +100,15 @@ private fun CompanionDetailContent(
                     emoji = resolvedAvatar.emoji,
                     size = 120.dp
                 )
-                SmallFloatingActionButton(
+                V9PMIconButton(
+                    icon = Icons.Default.Edit,
+                    contentDescription = "更换头像",
                     onClick = { showAvatarDialog = true },
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(
-                        Icons.Default.Edit,
-                        contentDescription = "更换头像",
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
+                    size = 48.dp,
+                    iconSize = 20.dp,
+                    shape = com.companion.cc.ui.designsystem.smoothCorner(24.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
             }
             Spacer(modifier = Modifier.height(16.dp))
             Text(
@@ -195,18 +192,14 @@ private fun CompanionDetailUnavailableScreen(
 ) {
     Scaffold(
         topBar = {
-            TopAppBar(
-                modifier = Modifier.padding(top = 44.dp),
+            V9PMTopBar(
                 title = { Text(title) },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "返回")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                onNavigateBack = onNavigateBack,
+                modifier = Modifier.padding(top = 44.dp)
             )
         },
-        containerColor = Color.Transparent
+        containerColor = Color.Transparent,
+        contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
     ) { padding ->
         Box(
             modifier = Modifier.fillMaxSize().padding(padding),

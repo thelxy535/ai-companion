@@ -18,8 +18,8 @@ android {
         applicationId = "com.companion.cc"
         minSdk = 26
         targetSdk = 34
-        versionCode = 14
-        versionName = "8.0.0"
+        versionCode = 21
+        versionName = "8.0.0-v85"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField(

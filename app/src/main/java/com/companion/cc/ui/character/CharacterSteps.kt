@@ -19,17 +19,12 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -40,6 +35,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.companion.cc.ui.components.V9PMActionButton
+import com.companion.cc.ui.components.V9PMChoiceRow
+import com.companion.cc.ui.components.V9PMDialogSurface
+import com.companion.cc.ui.components.V9PMIconButton
+import com.companion.cc.ui.components.V9PMTextField
 import com.companion.cc.domain.model.EmojiFrequency
 import com.companion.cc.domain.model.ExampleDialogue
 import com.companion.cc.domain.model.FormalityLevel
@@ -50,6 +50,9 @@ import com.companion.cc.ui.theme.rememberTactileAction
 @Composable
 fun BehaviorStep(viewModel: CharacterCustomizationViewModel) {
     val behaviorRules by viewModel.behaviorRules.collectAsState()
+    val creatorNotes by viewModel.creatorNotes.collectAsState()
+    val systemPromptOverride by viewModel.systemPromptOverride.collectAsState()
+    val postHistoryInstructions by viewModel.postHistoryInstructions.collectAsState()
 
     Column(
         modifier = Modifier
@@ -99,6 +102,127 @@ fun BehaviorStep(viewModel: CharacterCustomizationViewModel) {
             label = { it.displayName },
             onSelect = viewModel::updateFormalityLevel
         )
+
+        Divider(color = MaterialTheme.colorScheme.outlineVariant)
+
+        V9PMTextField(
+            value = behaviorRules.topicPreferences.joinToString(", "),
+            onValueChange = { value ->
+                viewModel.updateBehaviorRules(
+                    behaviorRules.copy(
+                        topicPreferences = value.split(",", "，")
+                            .map(String::trim)
+                            .filter(String::isNotBlank)
+                            .distinct()
+                            .take(20)
+                    )
+                )
+            },
+            label = "偏好话题（可选）",
+            placeholder = "例如：音乐、旅行、电影",
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        V9PMTextField(
+            value = behaviorRules.avoidTopics.joinToString(", "),
+            onValueChange = { value ->
+                viewModel.updateBehaviorRules(
+                    behaviorRules.copy(
+                        avoidTopics = value.split(",", "，")
+                            .map(String::trim)
+                            .filter(String::isNotBlank)
+                            .distinct()
+                            .take(20)
+                    )
+                )
+            },
+            label = "避免话题（可选）",
+            placeholder = "例如：不想讨论的内容",
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Divider(color = MaterialTheme.colorScheme.outlineVariant)
+
+        // V9PM 第 7 项：角色语音音色（TTS 音调/语速）
+        val voiceConfig by viewModel.voiceConfig.collectAsState()
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                "语音音色",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                "TA 朗读消息时的音调与语速",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("音调", style = MaterialTheme.typography.bodySmall, modifier = Modifier.width(48.dp))
+                Slider(
+                    value = (voiceConfig.pitch - 0.5f) / 1.5f,
+                    onValueChange = { viewModel.updateVoiceConfig(voiceConfig.copy(pitch = 0.5f + it * 1.5f)) },
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    String.format(java.util.Locale.US, "%.1f×", voiceConfig.pitch),
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.width(44.dp)
+                )
+            }
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("语速", style = MaterialTheme.typography.bodySmall, modifier = Modifier.width(48.dp))
+                Slider(
+                    value = (voiceConfig.speed - 0.5f) / 1.5f,
+                    onValueChange = { viewModel.updateVoiceConfig(voiceConfig.copy(speed = 0.5f + it * 1.5f)) },
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    String.format(java.util.Locale.US, "%.1f×", voiceConfig.speed),
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.width(44.dp)
+                )
+            }
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(
+                "高级角色卡指令",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            V9PMTextField(
+                value = creatorNotes,
+                onValueChange = viewModel::updateCreatorNotes,
+                label = "创作者备注",
+                placeholder = "记录设计意图或使用提示，不会暴露给角色",
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = false,
+                maxLines = 4
+            )
+            V9PMTextField(
+                value = systemPromptOverride,
+                onValueChange = viewModel::updateSystemPromptOverride,
+                label = "系统指令追加（可选）",
+                placeholder = "补充必须遵守的角色规则",
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = false,
+                maxLines = 6
+            )
+            V9PMTextField(
+                value = postHistoryInstructions,
+                onValueChange = viewModel::updatePostHistoryInstructions,
+                label = "历史消息后指令（可选）",
+                placeholder = "每轮对话历史之后追加的提醒",
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = false,
+                maxLines = 4
+            )
+        }
+
+        CharacterBookEditor(
+            entries = viewModel.characterBook.collectAsState().value,
+            onAdd = viewModel::updateCharacterBook
+        )
     }
 }
 
@@ -118,24 +242,19 @@ private fun <T> BehaviorChoiceGroup(
             fontWeight = FontWeight.SemiBold
         )
         options.forEach { option ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onSelect(option) }
-                    .padding(vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                RadioButton(
-                    selected = option == selected,
-                    onClick = { onSelect(option) }
-                )
-                Text(
-                    text = label(option),
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.bodyLarge
-                )
-            }
+            val isSelected = option == selected
+            V9PMChoiceRow(
+                title = label(option),
+                selected = isSelected,
+                onClick = { onSelect(option) },
+                modifier = Modifier.padding(vertical = 2.dp),
+                trailing = {
+                    RadioButton(
+                        selected = isSelected,
+                        onClick = null
+                    )
+                }
+            )
         }
     }
 }
@@ -207,14 +326,12 @@ fun ExamplesStep(viewModel: CharacterCustomizationViewModel) {
             }
         }
 
-        OutlinedButton(
+        V9PMActionButton(
+            label = "添加示例对话",
+            icon = Icons.Default.Add,
             onClick = openAddDialog,
             modifier = Modifier.fillMaxWidth()
-        ) {
-            Icon(Icons.Default.Add, contentDescription = null)
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("添加示例对话")
-        }
+        )
     }
 
     if (showAddDialog) {
@@ -264,13 +381,7 @@ private fun ExampleDialogueRow(
                 color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.SemiBold
             )
-            IconButton(onClick = openDeleteDialog) {
-                Icon(
-                    Icons.Default.Delete,
-                    contentDescription = "删除",
-                    tint = MaterialTheme.colorScheme.error
-                )
-            }
+            V9PMIconButton(Icons.Default.Delete, "删除", openDeleteDialog, size = 42.dp, iconSize = 18.dp, tint = MaterialTheme.colorScheme.error)
         }
 
         DialogueLine(
@@ -293,22 +404,33 @@ private fun ExampleDialogueRow(
     }
 
     if (showDeleteDialog) {
-        AlertDialog(
-            onDismissRequest = { showDeleteDialog = false },
-            title = { Text("删除示例对话") },
-            text = { Text("确定要删除这条示例对话吗？") },
-            confirmButton = {
-                TextButton(
-                    onClick = confirmDelete,
-                    colors = ButtonDefaults.textButtonColors(
-                        contentColor = MaterialTheme.colorScheme.error
+        V9PMDialogSurface(onDismissRequest = { showDeleteDialog = false }) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text("删除示例对话", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                Text("确定要删除这条示例对话吗？", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    V9PMActionButton(
+                        label = "取消",
+                        onClick = { showDeleteDialog = false },
+                        modifier = Modifier.weight(1f),
+                        height = 40.dp
                     )
-                ) { Text("删除") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteDialog = false }) { Text("取消") }
+                    V9PMActionButton(
+                        label = "删除",
+                        onClick = confirmDelete,
+                        destructive = true,
+                        modifier = Modifier.weight(1f),
+                        height = 40.dp
+                    )
+                }
             }
-        )
+        }
     }
 }
 
@@ -348,32 +470,181 @@ fun AddExampleDialogueDialog(
         onConfirm(userMessage, assistantMessage)
     }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("添加示例对话") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(
-                    value = userMessage,
-                    onValueChange = { userMessage = it },
-                    label = { Text("用户说") },
-                    placeholder = { Text("用户会说什么…") },
-                    modifier = Modifier.fillMaxWidth(),
-                    maxLines = 3
-                )
-                OutlinedTextField(
-                    value = assistantMessage,
-                    onValueChange = { assistantMessage = it },
-                    label = { Text("角色回复") },
-                    placeholder = { Text("角色会怎么回复…") },
-                    modifier = Modifier.fillMaxWidth(),
-                    maxLines = 3
+    V9PMDialogSurface(onDismissRequest = onDismiss) {
+        Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("添加示例对话", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            V9PMTextField(
+                value = userMessage,
+                onValueChange = { userMessage = it },
+                label = "用户说",
+                placeholder = "用户会说什么…",
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = false,
+                maxLines = 3
+            )
+            V9PMTextField(
+                value = assistantMessage,
+                onValueChange = { assistantMessage = it },
+                label = "角色回复",
+                placeholder = "角色会怎么回复…",
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = false,
+                maxLines = 3
+            )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                V9PMActionButton(label = "取消", onClick = onDismiss, modifier = Modifier.weight(1f), height = 40.dp)
+                V9PMActionButton(label = "添加", onClick = confirmAdd, enabled = canConfirm, modifier = Modifier.weight(1f), height = 40.dp)
+            }
+        }
+    }
+}
+
+/** V9PM 第 6 项：角色知识库（Character Book）编辑器。 */
+@Composable
+private fun CharacterBookEditor(
+    entries: List<com.companion.cc.domain.model.CharacterBookEntry>,
+    onAdd: (List<com.companion.cc.domain.model.CharacterBookEntry>) -> Unit
+) {
+    var showAddDialog by remember { mutableStateOf(false) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "角色知识库（Character Book）",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            V9PMActionButton(
+                label = "添加条目",
+                icon = Icons.Default.Add,
+                onClick = { showAddDialog = true },
+                height = 36.dp
+            )
+        }
+        Text(
+            "常驻条目始终生效；关键词条目在用户提到关键词时自动注入角色设定。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        if (entries.isEmpty()) {
+            Text(
+                "还没有知识库条目",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        } else {
+            entries.forEachIndexed { index, entry ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = "关键词：${entry.keys.joinToString("、").ifBlank { "（常驻）" }}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (entry.constant) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = entry.content,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 2,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        )
+                    }
+                    V9PMIconButton(
+                        icon = Icons.Default.Delete,
+                        contentDescription = "删除知识库条目",
+                        onClick = {
+                            onAdd(entries.filterIndexed { i, _ -> i != index })
+                        },
+                        size = 42.dp,
+                        iconSize = 18.dp,
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        }
+    }
+
+    if (showAddDialog) {
+        AddCharacterBookEntryDialog(
+            onDismiss = { showAddDialog = false },
+            onConfirm = { entry ->
+                onAdd(entries + entry)
+                showAddDialog = false
+            }
+        )
+    }
+}
+
+@Composable
+private fun AddCharacterBookEntryDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (com.companion.cc.domain.model.CharacterBookEntry) -> Unit
+) {
+    var keys by remember { mutableStateOf("") }
+    var content by remember { mutableStateOf("") }
+    var constant by remember { mutableStateOf(false) }
+    val canConfirm = content.isNotBlank()
+    val confirmAdd = rememberTactileAction(enabled = canConfirm) {
+        onConfirm(
+            com.companion.cc.domain.model.CharacterBookEntry(
+                keys = keys.split(",", "，").map(String::trim).filter(String::isNotBlank).distinct().take(10),
+                content = content.trim(),
+                enabled = true,
+                constant = constant,
+                priority = 0,
+                insertionOrder = 0
+            )
+        )
+    }
+
+    V9PMDialogSurface(onDismissRequest = onDismiss) {
+        Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("添加知识库条目", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Text(
+                "常驻条目始终注入；关键词条目在用户提到关键词时触发。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            V9PMTextField(
+                value = keys,
+                onValueChange = { keys = it },
+                label = "关键词（可选）",
+                placeholder = "逗号分隔，例如：音乐、猫、上海",
+                modifier = Modifier.fillMaxWidth()
+            )
+            V9PMTextField(
+                value = content,
+                onValueChange = { content = it },
+                label = "条目内容 *",
+                placeholder = "角色必须知道的设定或知识",
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = false,
+                maxLines = 4
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("常驻条目（始终生效）", style = MaterialTheme.typography.bodyMedium)
+                com.companion.cc.ui.components.V9PMSwitch(
+                    checked = constant,
+                    onCheckedChange = { constant = it }
                 )
             }
-        },
-        confirmButton = {
-            TextButton(onClick = confirmAdd, enabled = canConfirm) { Text("添加") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
-    )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                V9PMActionButton(label = "取消", onClick = onDismiss, modifier = Modifier.weight(1f), height = 40.dp)
+                V9PMActionButton(label = "添加", onClick = confirmAdd, enabled = canConfirm, modifier = Modifier.weight(1f), height = 40.dp)
+            }
+        }
+    }
 }

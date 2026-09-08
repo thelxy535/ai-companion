@@ -21,6 +21,65 @@ interface MessageDao {
 
     @Query("""
         SELECT * FROM messages
+        WHERE user_id = :userId AND companion_id = :companionId
+        ORDER BY timestamp DESC
+        LIMIT :limit
+    """)
+    fun getLatestMessages(
+        userId: String,
+        companionId: String,
+        limit: Int
+    ): Flow<List<MessageEntity>>
+
+    @Query("""
+        SELECT * FROM messages
+        WHERE user_id = :userId AND companion_id = :companionId
+        ORDER BY timestamp DESC, id DESC
+        LIMIT :limit
+    """)
+    suspend fun getLatestMessagesOnce(
+        userId: String,
+        companionId: String,
+        limit: Int
+    ): List<MessageEntity>
+
+    /** All proactive messages remain recallable even after the chat UI window rolls on. */
+    @Query("""
+        SELECT * FROM messages
+        WHERE user_id = :userId AND companion_id = :companionId AND origin = 'proactive'
+        ORDER BY timestamp ASC, id ASC
+    """)
+    suspend fun getProactiveMessagesOnce(
+        userId: String,
+        companionId: String
+    ): List<MessageEntity>
+
+    @Query("""
+        SELECT * FROM messages
+        WHERE user_id = :userId AND companion_id = :companionId
+        ORDER BY timestamp ASC, id ASC
+    """)
+    suspend fun getAllMessagesOnce(
+        userId: String,
+        companionId: String
+    ): List<MessageEntity>
+
+    /** Search for context recall without the presentation-layer 50-row cap. */
+    @Query("""
+        SELECT * FROM messages
+        WHERE user_id = :userId
+        AND (:companionId IS NULL OR companion_id = :companionId)
+        AND content LIKE '%' || :query || '%'
+        ORDER BY timestamp DESC, id DESC
+    """)
+    suspend fun searchMessagesOnce(
+        userId: String,
+        companionId: String?,
+        query: String
+    ): List<MessageEntity>
+
+    @Query("""
+        SELECT * FROM messages
         WHERE user_id = :userId
         ORDER BY timestamp ASC, id ASC
     """)
@@ -32,6 +91,16 @@ interface MessageDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMessages(messages: List<MessageEntity>)
+
+    @Query("""
+        SELECT companion_id FROM messages
+        WHERE user_id = :userId
+        ORDER BY timestamp DESC, id DESC
+        LIMIT 1
+    """)
+    suspend fun getLatestCompanionId(userId: String): String?
+
+
 
     @Query("SELECT COUNT(*) FROM messages WHERE user_id = :userId")
     suspend fun getMessageCount(userId: String): Int

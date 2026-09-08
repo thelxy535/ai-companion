@@ -1,10 +1,18 @@
 package com.companion.cc.domain.usecase
 
 import com.companion.cc.data.local.SettingsManager
-import com.companion.cc.data.remote.api.SiliconFlowApi
 import com.companion.cc.data.remote.model.ChatMessage
 import com.companion.cc.data.remote.model.ChatRequest
+import com.companion.cc.data.remote.model.ChatResponse
+import com.companion.cc.domain.manager.normalizeApiBaseUrl
+import com.google.gson.Gson
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 /**
@@ -13,8 +21,9 @@ import javax.inject.Inject
  * 参考：st-stepped-thinking
  */
 class SteppedThinkingUseCase @Inject constructor(
-    private val api: SiliconFlowApi,
-    private val settingsManager: SettingsManager
+    private val settingsManager: SettingsManager,
+    private val okHttpClient: OkHttpClient,
+    private val gson: Gson
 ) {
     /**
      * 执行思考步骤
@@ -52,11 +61,32 @@ class SteppedThinkingUseCase @Inject constructor(
             temperature = 0.7f
         )
 
-        val response = api.chatCompletion(request)
+        val baseUrl = normalizeApiBaseUrl(settingsManager.baseUrlFlow.first())
+        val response = withContext(Dispatchers.IO) {
+            requestChat(baseUrl, request)
+        }
         val thinkingContent = response.choices.firstOrNull()?.message?.content
             ?: "无法进行思考分析"
 
         return parseThinkingResult(thinkingContent)
+    }
+
+    private fun requestChat(baseUrl: String, request: ChatRequest): ChatResponse {
+        val body = gson.toJson(request).toRequestBody("application/json".toMediaType())
+        val httpRequest = Request.Builder()
+            .url("$baseUrl/chat/completions")
+            .header("Content-Type", "application/json")
+            .post(body)
+            .build()
+
+        okHttpClient.newCall(httpRequest).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw IllegalStateException("思考链请求失败: HTTP ${response.code}")
+            }
+            val responseBody = response.body?.string()
+                ?: throw IllegalStateException("思考链响应为空")
+            return gson.fromJson(responseBody, ChatResponse::class.java)
+        }
     }
 
     private fun buildThinkingPrompt(

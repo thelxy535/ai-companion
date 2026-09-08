@@ -38,11 +38,11 @@ import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MenuBook
-import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -104,10 +104,10 @@ fun MemoryHubScreen(
     onOpenFavorites: (String) -> Unit,
     viewModel: MemoryHubViewModel = hiltViewModel()
 ) {
-    val characters by viewModel.characters.collectAsState(initial = emptyList())
-    val materialStyleV7 by viewModel.materialStyle.collectAsState(initial = com.companion.cc.ui.designsystem.MaterialStyle.GLASS)
-    val memoryCount by viewModel.memoryCount.collectAsState(initial = 0)
-    val selectedId by viewModel.selectedId.collectAsState(initial = null)
+    val characters by viewModel.characters.collectAsStateWithLifecycle(initialValue = emptyList())
+    val materialStyleV7 by viewModel.materialStyle.collectAsStateWithLifecycle(initialValue = com.companion.cc.ui.designsystem.MaterialStyle.GLASS)
+    val memoryCount by viewModel.memoryCount.collectAsStateWithLifecycle(initialValue = 0)
+    val selectedId by viewModel.selectedId.collectAsStateWithLifecycle(initialValue = null)
     val selected = characters.firstOrNull { it.id == selectedId }
     val staggerPlay = rememberStaggerFirstPlay("memory")
 
@@ -117,7 +117,7 @@ fun MemoryHubScreen(
             .auroraScreenBackground(LocalVisualTheme.current.tokens.backdrop.isDark)
             .padding(start = 16.dp, end = 16.dp, top = 52.dp, bottom = 24.dp)
     ) {
-        Text("记忆", modifier = Modifier.staggerRise(staggerPlay, 0), style = MaterialTheme.typography.headlineMedium)
+        Text("记忆", modifier = Modifier.staggerRise(staggerPlay, 0), style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
         Spacer(modifier = Modifier.padding(4.dp))
         Text("先选择角色，再进入 TA 的记忆", modifier = Modifier.staggerRise(staggerPlay, 1, intervalMs = 60), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
@@ -129,7 +129,7 @@ fun MemoryHubScreen(
             modifier = Modifier.fillMaxWidth()
         ) {
             itemsIndexed(characters, key = { _, c -> c.id }) { index, character ->
-                val av = CharacterAvatarResolver.resolve(character.avatar, character.name)
+                val av = CharacterAvatarResolver.resolve(character)
                 val isSelected = selectedId == character.id
                 // V9PM role-pick 选中定稿：accent 2dp 圆环（间隙 3dp）+底部 4dp accent 点 spring 弹入；未选 hairline 1dp 环；按压 spring 0.92
                 val pickInteraction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }

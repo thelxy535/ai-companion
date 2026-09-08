@@ -16,6 +16,7 @@ class MessageRepositoryAllMessagesContractTest {
             override fun getAllMessages(userId: String): Flow<List<Message>> = flowOf(listOf(Message(id = "one", userId = userId, companionId = "custom", role = com.companion.cc.domain.model.MessageRole.USER, content = "saved", timestamp = 1L)))
             override suspend fun saveMessage(message: Message) = Unit
             override suspend fun saveMessages(messages: List<Message>) = Unit
+            override suspend fun getLatestCompanionId(userId: String): String? = null
             override suspend fun getMessageCount(userId: String) = 0
             override fun observeMessageCount(userId: String): Flow<Int> = flowOf(0)
             override suspend fun deleteAllMessages(userId: String) = Unit

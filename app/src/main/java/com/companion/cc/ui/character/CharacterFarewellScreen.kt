@@ -1,10 +1,15 @@
 package com.companion.cc.ui.character
 
 import com.companion.cc.ui.designsystem.auroraScreenBackground
+import com.companion.cc.ui.components.V9PMActionButton
+import com.companion.cc.ui.components.V9PMDialogSurface
+import com.companion.cc.ui.components.V9PMActionButton
+import com.companion.cc.ui.components.V9PMTopBar
 import com.companion.cc.ui.theme.LocalVisualTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -35,6 +40,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.companion.cc.domain.character.CharacterDeletionResult
@@ -57,18 +63,14 @@ fun CharacterFarewellScreen(
     Scaffold(
         modifier = Modifier.auroraScreenBackground(LocalVisualTheme.current.tokens.backdrop.isDark),
         topBar = {
-            TopAppBar(
-                modifier = Modifier.padding(top = 44.dp),
+            V9PMTopBar(
                 title = { Text("告别角色") },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "返回")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                onNavigateBack = onNavigateBack,
+                modifier = Modifier.padding(top = 44.dp)
             )
         },
-        containerColor = Color.Transparent
+        containerColor = Color.Transparent,
+        contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
     ) { padding ->
         when (val current = state) {
             CharacterFarewellState.Idle,
@@ -95,34 +97,19 @@ fun CharacterFarewellScreen(
     }
 
     if (showConfirmDialog) {
-        AlertDialog(
-            onDismissRequest = { showConfirmDialog = false },
-            icon = {
-                Icon(
-                    Icons.Default.DeleteForever,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error
-                )
-            },
-            title = { Text("确认告别") },
-            text = {
+        V9PMDialogSurface(onDismissRequest = { showConfirmDialog = false }) {
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("确认告别", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
                 Text("将先保存角色记忆胶囊，再删除角色及其运行数据。请确认你已准备好保管恢复令牌。")
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    V9PMActionButton(label = "取消", onClick = { showConfirmDialog = false }, modifier = Modifier.weight(1f), height = 40.dp)
+                    V9PMActionButton(label = "确认删除", onClick = {
                         showConfirmDialog = false
                         viewModel.confirmDeletion()
-                    },
-                    colors = ButtonDefaults.textButtonColors(
-                        contentColor = MaterialTheme.colorScheme.error
-                    )
-                ) { Text("确认删除") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showConfirmDialog = false }) { Text("取消") }
+                    }, modifier = Modifier.weight(1f), height = 40.dp, destructive = true)
+                }
             }
-        )
+        }
     }
 }
 
@@ -160,18 +147,14 @@ private fun ReadyContent(
             "删除前会生成加密记忆胶囊，并清理该角色的消息、记忆和运行时数据。删除完成后只能通过恢复令牌尝试恢复。",
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        Button(
+        V9PMActionButton(
+            label = "保存胶囊并删除",
+            icon = Icons.Default.DeleteForever,
             onClick = onConfirm,
             modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-        ) {
-            Icon(Icons.Default.DeleteForever, contentDescription = null)
-            Spacer(Modifier.padding(4.dp))
-            Text("保存胶囊并删除")
-        }
-        OutlinedButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) {
-            Text("暂不删除")
-        }
+            destructive = true
+        )
+        V9PMActionButton(label = "暂不删除", onClick = onCancel, modifier = Modifier.fillMaxWidth(), height = 40.dp)
     }
 }
 
@@ -197,10 +180,8 @@ private fun DeletedContent(
             color = MaterialTheme.colorScheme.primary
         )
         Text("胶囊 ID：${result.capsuleId}", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        OutlinedButton(onClick = onOpenCapsuleVault, modifier = Modifier.fillMaxWidth()) {
-            Text("打开记忆胶囊库")
-        }
-        Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text("返回角色列表") }
+        V9PMActionButton(label = "打开记忆胶囊库", onClick = onOpenCapsuleVault, modifier = Modifier.fillMaxWidth(), height = 44.dp)
+        V9PMActionButton(label = "返回角色列表", onClick = onDone, modifier = Modifier.fillMaxWidth(), height = 44.dp)
     }
 }
 
@@ -219,8 +200,6 @@ private fun FailureContent(
     ) {
         Text("操作失败", style = MaterialTheme.typography.headlineSmall)
         Text(message, color = MaterialTheme.colorScheme.error)
-        OutlinedButton(onClick = onNavigateBack, modifier = Modifier.fillMaxWidth()) {
-            Text("返回")
-        }
+        V9PMActionButton(label = "返回", onClick = onNavigateBack, modifier = Modifier.fillMaxWidth(), height = 44.dp)
     }
 }

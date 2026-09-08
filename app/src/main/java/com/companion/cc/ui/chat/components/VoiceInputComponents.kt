@@ -14,6 +14,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.companion.cc.ui.chat.typingDotMotionEnabled
+import com.companion.cc.ui.components.V9PMIconButton
 import com.companion.cc.ui.theme.LocalVisualTheme
 
 /**
@@ -44,27 +45,17 @@ fun VoiceInputButton(
         }
 
         // 按钮
-        FloatingActionButton(
+        V9PMIconButton(
+            icon = if (isListening) Icons.Default.Stop else Icons.Default.Mic,
+            contentDescription = if (isListening) "停止录音" else "开始录音",
             onClick = {
-                if (isListening) {
-                    onStopListening()
-                } else {
-                    onStartListening()
-                }
+                if (isListening) onStopListening() else onStartListening()
             },
-            containerColor = if (isListening)
-                MaterialTheme.colorScheme.error
-            else
-                MaterialTheme.colorScheme.primary
-        ) {
-            Icon(
-                imageVector = if (isListening)
-                    Icons.Default.Stop
-                else
-                    Icons.Default.Mic,
-                contentDescription = if (isListening) "停止录音" else "开始录音"
-            )
-        }
+            size = 56.dp,
+            iconSize = 24.dp,
+            shape = com.companion.cc.ui.designsystem.smoothCorner(24.dp),
+            tint = if (isListening) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+        )
     }
 }
 

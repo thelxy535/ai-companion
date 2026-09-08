@@ -7,7 +7,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -39,6 +42,8 @@ import androidx.compose.ui.platform.LocalContext
 import com.companion.cc.ui.designsystem.AuroraDuration
 import com.companion.cc.ui.designsystem.AuroraCurves
 import com.companion.cc.ui.designsystem.smoothCorner
+import com.companion.cc.ui.chat.components.EmotionalStatusBar
+import com.companion.cc.ui.chat.components.EmoMiniBar
 import com.companion.cc.ui.designsystem.AuroraDay
 import com.companion.cc.ui.designsystem.AuroraNight
 import com.companion.cc.ui.designsystem.AuroraChatTokens
@@ -54,12 +59,15 @@ import coil.compose.AsyncImage
 import com.companion.cc.domain.model.Message
 import com.companion.cc.domain.model.MessageRole
 import com.companion.cc.domain.model.companions
+import com.companion.cc.domain.message.MessageContentParser
 import com.companion.cc.ui.chat.components.EmotionalStatsDialog
 import com.companion.cc.ui.chat.components.EmotionalTimelineDialog
 import com.companion.cc.ui.chat.components.TTSSpeakingIndicator
 import com.companion.cc.ui.chat.components.VoiceListeningIndicator
 import com.companion.cc.ui.components.TagSelectionDialog
 import com.companion.cc.ui.components.TagManagementDialog
+import com.companion.cc.ui.components.V9PMDialogSurface
+import com.companion.cc.ui.components.V9PMIconButton
 import com.companion.cc.ui.components.CompanionAvatar
 import com.companion.cc.ui.components.UserAvatar
 import com.companion.cc.ui.settings.AvatarSettingsDialog
@@ -75,6 +83,10 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.material3.MaterialTheme
 
 /**
  * 自然聊天界面
@@ -84,7 +96,7 @@ import androidx.compose.runtime.withFrameNanos
  * - 顶部动态状态（正在思考 / 正在回复 / 离线 / 最后活跃时间）
  * - 语音输入、错误重试、离线横幅
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 fun NaturalChatScreen(
     companionId: String,
@@ -92,7 +104,6 @@ fun NaturalChatScreen(
     onNavigateToMemory: () -> Unit = {},
     onNavigateToStats: () -> Unit = {},
     onNavigateToData: () -> Unit = {},
-    onNavigateToSettings: () -> Unit = {},
     onNavigateToFavorites: () -> Unit = {},
     onNavigateToCompanionDetail: () -> Unit = {},
     viewModel: ChatViewModel = hiltViewModel()
@@ -106,7 +117,10 @@ fun NaturalChatScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val error by viewModel.error.collectAsState()
     val networkState by viewModel.networkState.collectAsState()
+    val usesLocalTestEndpoint by viewModel.usesLocalTestEndpoint.collectAsState()
     val latestStreamingMessageId by viewModel.latestStreamingMessageId.collectAsState()
+    val activeStream by viewModel.activeStream.collectAsState()
+    val sendState by viewModel.sendState.collectAsState()
     val customCharacterName by viewModel.customCharacterName.collectAsState()
 
     // 头像状态
@@ -118,7 +132,7 @@ fun NaturalChatScreen(
     var showCompanionAvatarDialog by remember { mutableStateOf(false) }
 
     // 是否离线
-    val isOffline = networkState is NetworkState.Offline
+    val isOffline = networkState is NetworkState.Offline && !usesLocalTestEndpoint
 
     // 图片选择状态
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
@@ -130,32 +144,25 @@ fun NaturalChatScreen(
         selectedImageUri = uri
     }
 
-    // 记录上一次的消息数量，用于检测新的用户消息
-    var previousMessageCount by remember { mutableIntStateOf(messages.size) }
-    var lastUserMessageTime by remember { mutableLongStateOf(0L) }
-
-    // 检测最后一条消息是否是用户消息
-    val isLastMessageFromUser = messages.lastOrNull()?.role == MessageRole.USER
-
-    // 如果最后是用户消息，记录时间
-    LaunchedEffect(messages.size, isLastMessageFromUser) {
-        if (isLastMessageFromUser && messages.size != previousMessageCount) {
-            lastUserMessageTime = System.currentTimeMillis()
+    // 发送/回复状态是唯一的 typing 来源，避免依赖不会更新的时间戳变量
+    val shouldShowTyping = sendState is ChatSendState.Sending || sendState is ChatSendState.Streaming
+    val listState = rememberLazyListState()
+    var lastMessageCount by remember(companionId) { mutableIntStateOf(0) }
+    val latestMessageId = messages.lastOrNull()?.id
+    LaunchedEffect(latestMessageId, activeStream?.sequence, shouldShowTyping) {
+        if (messages.isNotEmpty()) {
+            listState.scrollToItem(0)
+            lastMessageCount = messages.size
         }
-        previousMessageCount = messages.size
     }
 
-    // 最后一条是用户消息且发送不超过30秒时，显示打字指示器
-    val shouldShowTyping = isLastMessageFromUser &&
-        (System.currentTimeMillis() - lastUserMessageTime) < 30000
 
     // 新功能状态
-    val emotionalState by viewModel.emotionalState.collectAsState()
-    val conversationStats by viewModel.conversationStats.collectAsState()
+    // V9PM 状态本地化：emotionalState 由 EmoMiniBar 内部收集（重组局部化）
+    // V9PM 状态本地化：conversationStats 由 EmotionalStatsDialog 内部收集
     val isListening by viewModel.isListening.collectAsState()
     val isSpeaking by viewModel.isSpeaking.collectAsState()
 
-    val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
@@ -174,8 +181,6 @@ fun NaturalChatScreen(
 
     var selectedMessage by remember { mutableStateOf<Message?>(null) }
     var showMenu by remember { mutableStateOf(false) }
-    // V8 ②：屏幕打开时的既有消息集合——入场动画只播新到的消息（历史/滚动回看不播）
-    val initialMessageIds = remember { messages.map { it.id }.toSet() }
     var showStatsPanel by remember { mutableStateOf(false) }
     var showTimelineDialog by remember { mutableStateOf(false) }
     var showTagDialog by remember { mutableStateOf(false) }
@@ -187,48 +192,38 @@ fun NaturalChatScreen(
         companions.find { it.id == companionId } ?: companions[0]
     }
 
-    // 加载消息（只加载一次，Room Flow 会自动推送后续变化）
-    var isInitialLoad by remember { mutableStateOf(true) }
-    LaunchedEffect(companionId) {
-        isInitialLoad = true
-        viewModel.loadMessages(companionId)
-        isInitialLoad = false
-    }
-
+    // 消息初始化由 ChatViewModel.setCharacter 统一负责；Room Flow 只做后续校正
     // 自动滚动到底部
     // V7 回底：新消息/首进都无动画直跳（animate 在长列表会“从上面滚下来”）
-    var initialScrolled by remember { mutableStateOf(false) }
-    LaunchedEffect(messages.size, shouldShowTyping) {
-        if (messages.isEmpty()) return@LaunchedEffect
-        val target = messages.size - 1 + if (shouldShowTyping) 1 else 0
-        if (!initialScrolled) {
-            // 首次进入：静默定位，用户不感知
-            listState.scrollToItem(target)
-            initialScrolled = true
-        } else {
-            // 后续新消息：也直跳（贴底体验优先）
-            listState.scrollToItem(target)
-        }
-    }
     // V7 键盘呼出/收起回底：WindowInsets 响应式读取
-    val imeBottom = androidx.compose.foundation.layout.WindowInsets.ime
-        .getBottom(androidx.compose.ui.platform.LocalDensity.current)
-    LaunchedEffect(imeBottom) {
-        if (messages.isEmpty()) return@LaunchedEffect
-        val target = messages.size - 1 + if (shouldShowTyping) 1 else 0
-        if (imeBottom > 0) {
-            // 键盘升起：动画全程逐帧钉底（单次滚动会跑在视口重排之前，气泡停在键盘后）
-            var frames = 0
-            while (frames < 40) {
-                listState.scrollToItem(target)
-                androidx.compose.runtime.withFrameNanos { }
-                frames++
+    // V9PM：退出前先收键盘（键盘开着直接 pop 会让 Dock 在转场期间跳动闪现）
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    val exitScope = rememberCoroutineScope()
+    val exitDensity = androidx.compose.ui.platform.LocalDensity.current
+    val exitImeInsets = androidx.compose.foundation.layout.WindowInsets.ime
+    var isExiting by remember { mutableStateOf(false) }
+    var navBarFrozen by remember { mutableStateOf(0.dp) }
+    val navBarPadNow = androidx.compose.foundation.layout.WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    androidx.compose.runtime.SideEffect { if (!isExiting) navBarFrozen = navBarPadNow }
+    val exitFocus = androidx.compose.ui.platform.LocalFocusManager.current
+    val exitChat = {
+        if (!isExiting) {
+            isExiting = true
+            exitFocus.clearFocus() // 清残留焦点：输入框销毁时焦点释放会触发键盘短暂重启闪现
+            if (exitImeInsets.getBottom(exitDensity) > 0) {
+                keyboard?.hide()
+                exitScope.launch {
+                    kotlinx.coroutines.delay(160)
+                    onNavigateBack()
+                }
+            } else {
+                onNavigateBack()
             }
-        } else {
-            // 键盘收起：视口重新撑大，回底一次
-            listState.scrollToItem(target)
         }
     }
+    // 系统返回手势/返回键与顶栏返回钮统一走同一退出保护路径
+    androidx.activity.compose.BackHandler(enabled = !isExiting) { exitChat() }
+
 
     // 错误提示（可重试的错误带重试按钮）
     LaunchedEffect(error) {
@@ -248,30 +243,34 @@ fun NaturalChatScreen(
 
     Scaffold(
         topBar = {
-            ChatTopBar(
-                companion = companion,
-                companionAvatar = companionAvatar,
-                customCharacterName = customCharacterName,
-                onNavigateBack = onNavigateBack,
-                onMenuClick = { showMenu = true },
-                onTimelineClick = {
-                    scope.launch {
-                        timelineData = viewModel.getEmotionalTimeline(companionId)
-                        showTimelineDialog = true
+            Column {
+                ChatTopBar(
+                    companion = companion,
+                    customCharacterName = customCharacterName,
+                    onNavigateBack = { exitChat() },
+                    onMenuClick = { showMenu = true },
+                    onAvatarLongPress = onNavigateToCompanionDetail,  // 长按名字打开角色详情页
+                    isLoading = isLoading,
+                    shouldShowTyping = shouldShowTyping,
+                    isOffline = isOffline,
+                    messages = messages
+                )
+                // V9PM emo-mini：六段彩条（点击展开情绪面板）
+                EmoMiniBar(
+                    stateFlow = viewModel.emotionalState,
+                    onClick = {
+                        scope.launch {
+                            timelineData = viewModel.getEmotionalTimeline(companionId)
+                            showTimelineDialog = true
+                        }
                     }
-                },
-                onAvatarLongPress = onNavigateToCompanionDetail,  // 点击头像打开角色详情页
-                isLoading = isLoading,
-                shouldShowTyping = shouldShowTyping,
-                isOffline = isOffline,
-                messages = messages
-            )
+                )
+            }
         },
         bottomBar = {
             Column(
                 modifier = Modifier
-                    .navigationBarsPadding()
-                    .imePadding()
+                    .padding(bottom = navBarFrozen + if (isExiting) 0.dp else exitImeInsets.asPaddingValues().calculateBottomPadding())
             ) {
                 // 语音输入指示器
                 if (isListening) {
@@ -293,14 +292,20 @@ fun NaturalChatScreen(
                         val imageUri = selectedImageUri
                         if (imageUri != null) {
                             // 发送带图片的消息
-                            viewModel.sendMessageWithImage(companionId, inputText, imageUri)
-                            selectedImageUri = null  // 清空选中的图片
+                            val accepted = viewModel.sendMessageWithImage(companionId, inputText, imageUri)
+                            if (accepted) {
+                                selectedImageUri = null
+                                inputText = ""
+                                viewModel.clearDraft(companionId)
+                            }
                         } else if (inputText.isNotBlank()) {
                             // 发送纯文字消息
-                            viewModel.sendMessage(companionId, inputText)
+                            val accepted = viewModel.sendMessage(companionId, inputText)
+                            if (accepted) {
+                                inputText = ""
+                                viewModel.clearDraft(companionId)
+                            }
                         }
-                        inputText = ""
-                        viewModel.clearDraft(companionId)  // 清除草稿
                     },
                     onImageClick = {
                         // 打开图片选择器
@@ -323,7 +328,8 @@ fun NaturalChatScreen(
             }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        containerColor = Color.Transparent
+        containerColor = Color.Transparent,
+        contentColor = MaterialTheme.colorScheme.onSurface
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize()) {
             Column(modifier = Modifier.fillMaxSize()) {
@@ -366,20 +372,43 @@ fun NaturalChatScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(padding)
-                        .weight(1f),
-                    contentPadding = PaddingValues(vertical = 8.dp)
+                        .weight(1f)
+                        // V9PM：点空白收键盘（点气泡/按钮由子元素消费，不冲突）
+                        .pointerInput(Unit) {
+                            detectTapGestures {
+                                keyboard?.hide()
+                                exitFocus.clearFocus()
+                            }
+                        },
+                    contentPadding = PaddingValues(vertical = 8.dp),
+                    reverseLayout = true, // V9PM：反转列表——首帧即底部，天然钉底零跳变（市面聊天标准架构）
                 ) {
                     // V8 ② 连发气泡 60ms 递进（同回合同角色）；入场仅播新到消息
-                    itemsIndexed(
-                        items = messages,
+                    // 打字指示器（reverseLayout：首个 item=视口底部=最新消息下方）
+                    if (shouldShowTyping) {
+                        item {
+                            TypingIndicator(companionEmoji = companion.emoji, companionAvatar = companionAvatar)
+                        }
+                    }
+                        itemsIndexed(
+                        // Room/缓存到达后直接显示历史快照，不再等待两帧
+                        items = messages.asReversed(),
                         key = { _, m -> m.id }
                     ) { index, message ->
-                        var burstIndex = 0
-                        var bi = index - 1
-                        while (bi >= 0 && messages[bi].role == message.role && messages[bi].id !in initialMessageIds) { burstIndex++; bi-- }
+                        // 流式期间的占位气泡内容为空：跳过渲染，打字指示器已代表"正在回复"，
+                        // 避免出现一闪而过的小气泡
+                        val isStreamingPlaceholder = message.role == MessageRole.ASSISTANT &&
+                            message.id == latestStreamingMessageId &&
+                            message.content.isBlank()
+                        if (isStreamingPlaceholder) {
+                            return@itemsIndexed
+                        }
+                        // 历史快照不播放气泡入场；新消息由发送状态独立驱动
+                        // 不在 Lazy item 内计算 burstIndex，避免反转列表与原序索引错位
                         // V9PM：相邻消息间隔 >2h 插入居中时间胶囊
-                        val showTimeDivider = index == 0 ||
-                            (message.timestamp - messages[index - 1].timestamp) > 2L * 3_600_000L
+                        val showTimeDivider =
+                            index == messages.size - 1 ||
+                                (message.timestamp - messages[messages.size - index - 2].timestamp) > 2L * 3_600_000L
                         Column {
                             if (showTimeDivider) {
                                 Box(
@@ -409,43 +438,18 @@ fun NaturalChatScreen(
                                 userAvatar = userAvatar,
                                 onLongPress = { selectedMessage = message },
                                 shouldStream = message.id == latestStreamingMessageId,
-                                entranceDelayMs = if (message.id in initialMessageIds) -1 else burstIndex * 60
+                                streamText = activeStream?.takeIf { it.assistantMessageId == message.id }?.text,
+                                // 历史消息不播入场；新消息由流式状态和列表结构事件驱动
+                                entranceDelayMs = -1
                             )
                         }
                     }
 
-                    // 打字指示器
-                    if (shouldShowTyping) {
-                        item {
-                            TypingIndicator(companionEmoji = companion.emoji)
-                        }
-                    }
                 }
             }
-
-            // 初始加载指示器
-            if (isInitialLoad && messages.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.background),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        CircularProgressIndicator(
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Text(
-                            text = "加载对话中...",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
+// V9PM 加载模式重构：进页不再有任何阻塞式加载层——页面框架（顶栏/输入框/极光）常驻，
+// 消息数据后台加载、到达即渐进填充。短暂空窗是暂态，不显示转圈（此前全屏白底 Loading 是"加载中闪一下"的元凶）。
+// isInitialLoad 保留供埋点/调试。
         }
     }
 
@@ -501,42 +505,45 @@ fun NaturalChatScreen(
     }
 
     // 功能菜单（V8 ⑧：scale .92→1 + fade 260ms bezier(.34,1.3,.5,1)，消失 160ms fade）
-    AnimatedVisibility(
-        visible = showMenu,
-        enter = scaleIn(initialScale = 0.92f, animationSpec = tween(AuroraDuration.BubbleIn, easing = AuroraCurves.BubbleEmphasized)) +
-            fadeIn(tween(AuroraDuration.BubbleIn, easing = AuroraCurves.BubbleEmphasized)),
-        exit = fadeOut(tween(160)),
-    ) {
-        FunctionMenu(
-            onDismiss = { showMenu = false },
-            onMemoryClick = {
-                showMenu = false
-                onNavigateToMemory()
-            },
-            onStatsClick = {
-                showMenu = false
-                onNavigateToStats()
-            },
-            onDataClick = {
-                showMenu = false
-                onNavigateToData()
-            },
-            onSettingsClick = {
-                showMenu = false
-                onNavigateToSettings()
-            },
-            onFavoritesClick = {
-                showMenu = false
-                onNavigateToFavorites()
+    if (showMenu) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.TopEnd
+        ) {
+            AnimatedVisibility(
+                visible = showMenu,
+                enter = scaleIn(initialScale = 0.92f, animationSpec = tween(AuroraDuration.BubbleIn, easing = AuroraCurves.BubbleEmphasized)) +
+                    fadeIn(tween(AuroraDuration.BubbleIn, easing = AuroraCurves.BubbleEmphasized)),
+                exit = fadeOut(tween(160)),
+            ) {
+                FunctionMenu(
+                    onDismiss = { showMenu = false },
+                    onMemoryClick = {
+                        showMenu = false
+                        onNavigateToMemory()
+                    },
+                    onStatsClick = {
+                        showMenu = false
+                        onNavigateToStats()
+                    },
+                    onDataClick = {
+                        showMenu = false
+                        onNavigateToData()
+                    },
+                    onFavoritesClick = {
+                        showMenu = false
+                        onNavigateToFavorites()
+                    }
+                )
             }
-        )
+        }
     }
 
     // 情感状态面板（弹出式）
     if (showStatsPanel) {
         EmotionalStatsDialog(
-            emotionalState = emotionalState,
-            conversationStats = conversationStats,
+            emotionalStateFlow = viewModel.emotionalState,
+            conversationStatsFlow = viewModel.conversationStats,
             onDismiss = { showStatsPanel = false }
         )
     }
@@ -635,120 +642,97 @@ fun NaturalChatScreen(
 /**
  * 聊天顶部栏：头像 + 名字 + 动态状态
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun ChatTopBar(
     companion: com.companion.cc.domain.model.Companion,
-    companionAvatar: String?,
     customCharacterName: String? = null,
     onNavigateBack: () -> Unit,
     onMenuClick: () -> Unit,
-    onTimelineClick: () -> Unit = {},
     onAvatarLongPress: () -> Unit = {},
     isLoading: Boolean = false,
     shouldShowTyping: Boolean = false,
     isOffline: Boolean = false,
     messages: List<Message> = emptyList()
 ) {
-    val visualTheme = LocalVisualTheme.current
-    GlassSurface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp),
-        contentPadding = PaddingValues(0.dp),
-        useStrongFill = true
+    // V9PM 原型：透明顶栏，62dp 起浮于极光上；ghost 玻璃圆钮；presence 居中；无时间线按钮
+    val visualTheme = com.companion.cc.ui.theme.LocalVisualTheme.current
+    val night = visualTheme.tokens.backdrop.isDark
+    val colors = if (night) com.companion.cc.ui.designsystem.AuroraNight else com.companion.cc.ui.designsystem.AuroraDay
+    val lastMessage = messages.lastOrNull()
+    val statusText = if (lastMessage != null) {
+        val diff = System.currentTimeMillis() - lastMessage.timestamp
+        when {
+            diff < 60_000 -> "刚刚活跃"
+            diff < 3_600_000 -> "${diff / 60_000}分钟前活跃"
+            diff < 86_400_000 -> "${diff / 3_600_000}小时前活跃"
+            else -> "空闲中"
+        }
+    } else {
+        "等待开始对话"
+    }
+    val statusColor = when {
+        isLoading -> visualTheme.tokens.status.warning
+        shouldShowTyping -> visualTheme.tokens.status.success
+        isOffline -> visualTheme.tokens.contentMuted
+        else -> visualTheme.tokens.status.info
+    }
+    val statusLabel = when {
+        isLoading -> "正在思考..."
+        shouldShowTyping -> "正在回复..."
+        isOffline -> "离线模式"
+        else -> statusText
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 62.dp, start = 12.dp, end = 12.dp)
+            .height(56.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        TopAppBar(
-        title = {
+        V9PMIconButton(
+            icon = Icons.Default.ArrowBack,
+            contentDescription = "返回",
+            onClick = onNavigateBack,
+            size = 42.dp,
+            iconSize = 20.dp,
+            shape = CircleShape,
+            tint = colors.ink
+        )
+        Spacer(Modifier.width(6.dp))
+        // presence：名字/状态 居中（长按 = 角色详情，保住原长按头像入口）
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .combinedClickable(onClick = {}, onLongClick = onAvatarLongPress),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = customCharacterName ?: companion.name,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+                lineHeight = 21.sp,
+                color = colors.ink
+            )
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                // 伴侣头像（支持自定义，长按更换）
-                CompanionAvatar(
-                    avatarUrl = companionAvatar,
-                    emoji = companion.emoji,
-                    size = 40.dp,
-                    onClick = onAvatarLongPress
-                )
-
-                // 伴侣信息 + 动态状态
-                Column {
-                    Text(
-                        text = customCharacterName ?: companion.name,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        when {
-                            // 1. AI 正在思考（正在生成回复）
-                            isLoading -> {
-                                StatusDot(visualTheme.tokens.status.warning)
-                                StatusText("正在思考...")
-                            }
-                            // 2. 有未回复的用户消息
-                            shouldShowTyping -> {
-                                StatusDot(visualTheme.tokens.status.success)
-                                StatusText("正在回复...")
-                            }
-                            // 3. 网络离线
-                            isOffline -> {
-                                StatusDot(visualTheme.tokens.contentMuted)
-                                StatusText("离线模式")
-                            }
-                            // 4. 空闲：显示最后活跃时间
-                            else -> {
-                                StatusDot(visualTheme.tokens.status.info)
-                                val lastMessage = messages.lastOrNull()
-                                val statusText = if (lastMessage != null) {
-                                    val diff = System.currentTimeMillis() - lastMessage.timestamp
-                                    when {
-                                        diff < 60_000 -> "刚刚活跃"
-                                        diff < 3_600_000 -> "${diff / 60_000}分钟前活跃"
-                                        diff < 86_400_000 -> "${diff / 3_600_000}小时前活跃"
-                                        else -> "空闲中"
-                                    }
-                                } else {
-                                    "等待开始对话"
-                                }
-                                StatusText(statusText)
-                            }
-                        }
-                    }
-                }
+                StatusDot(statusColor)
+                StatusText(statusLabel)
             }
-        },
-        navigationIcon = {
-            IconButton(onClick = onNavigateBack) {
-                Icon(
-                    imageVector = Icons.Default.ArrowBack,
-                    contentDescription = "返回"
-                )
-            }
-        },
-        actions = {
-            // 情感历史时间线按钮
-            IconButton(onClick = onTimelineClick) {
-                Icon(
-                    imageVector = Icons.Default.Timeline,
-                    contentDescription = "情感历史"
-                )
-            }
-            // 菜单按钮
-            IconButton(onClick = onMenuClick) {
-                Icon(
-                    imageVector = Icons.Default.MoreVert,
-                    contentDescription = "菜单"
-                )
-            }
-        },
-        colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = Color.Transparent
+        }
+        Spacer(Modifier.width(6.dp))
+        V9PMIconButton(
+            icon = Icons.Default.MoreVert,
+            contentDescription = "菜单",
+            onClick = onMenuClick,
+            size = 42.dp,
+            iconSize = 20.dp,
+            shape = CircleShape,
+            tint = colors.ink
         )
-    )
     }
 }
 
@@ -781,11 +765,11 @@ private fun MessageBubble(
     userAvatar: String?,
     onLongPress: () -> Unit,
     shouldStream: Boolean = false,
+    streamText: String? = null,
     entranceDelayMs: Int = -1
 ) {
     val isUser = message.role == MessageRole.USER
     val visualTheme = LocalVisualTheme.current
-
     // V8 ② 气泡入场：m-bubble-in 260ms（scale .92 + 16dp 上移 + 淡入）；entranceDelayMs<0 时不播
     val entrance = remember { Animatable(if (entranceDelayMs >= 0) 0f else 1f) }
     LaunchedEffect(entranceDelayMs) {
@@ -797,10 +781,41 @@ private fun MessageBubble(
     val bubbleRisePx = with(LocalDensity.current) { 16.dp.toPx() }
 
     // 流式输出效果：仅正在流式传输的 AI 消息播放逐字动画，历史消息直接显示
+    // 流式期间原始文本可能含 [动作: xxx]，先剥离动作只显示对白，避免动作混入内容
+    val parsedStoredContent = remember(message.id, message.content) {
+        if (!isUser && message.action.isNullOrBlank()) {
+            MessageContentParser.parse(message.content)
+        } else {
+            null
+        }
+    }
+    val parsedStreamContent = remember(message.id, streamText) {
+        if (!isUser && !streamText.isNullOrBlank()) {
+            MessageContentParser.parse(streamText)
+        } else {
+            null
+        }
+    }
+    val actionText = message.action?.trim().orEmpty().ifBlank {
+        parsedStreamContent?.action.orEmpty().ifBlank { parsedStoredContent?.action.orEmpty() }
+    }
     val displayText = if (!isUser) {
-        rememberStreamingText(message.content, isStreaming = shouldStream, streamingSpeed = 30L)
+        val raw = streamText?.let { parsedStreamContent?.dialogue ?: it }
+            ?: parsedStoredContent?.dialogue
+            ?: message.content
+        rememberStreamingText(
+            fullText = raw,
+            isStreaming = shouldStream,
+            streamingSpeed = 30L,
+            streamKey = message.id
+        ).trim()
     } else {
-        message.content
+        message.content.trim()
+    }
+    val visibleDialogue = when {
+        displayText.isNotBlank() -> displayText
+        !isUser && actionText.isNotBlank() -> "……"
+        else -> ""
     }
 
     Row(
@@ -820,7 +835,7 @@ private fun MessageBubble(
             CompanionAvatar(
                 avatarUrl = companionAvatar,
                 emoji = companionEmoji,
-                size = 40.dp
+                size = 30.dp
             )
             Spacer(modifier = Modifier.width(8.dp))
         }
@@ -832,58 +847,58 @@ private fun MessageBubble(
             ),
             horizontalAlignment = if (isUser) Alignment.End else Alignment.Start
         ) {
-            // V9PM 气泡新装：AI=固定玻璃 / 用户=135° 渐变实心；非对称圆角 22/22/10/22；用户 shadow-low
-            val night = com.companion.cc.ui.theme.LocalVisualTheme.current.tokens.backdrop.isDark
-            val auroraColors = if (night) com.companion.cc.ui.designsystem.AuroraNight else com.companion.cc.ui.designsystem.AuroraDay
-            val bubbleShape = if (isUser)
-                RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp, bottomEnd = 10.dp, bottomStart = 22.dp)
-            else
-                RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp, bottomEnd = 22.dp, bottomStart = 10.dp)
-            Column(
-                modifier = Modifier
-                    .shadow(
-                        if (isUser) 4.dp else 0.dp,
-                        bubbleShape,
-                        ambientColor = if (night) Color(0x59000000) else Color(0x121C2230),
-                        spotColor = if (night) Color(0x59000000) else Color(0x121C2230)
-                    )
-                    .clip(bubbleShape)
-                    .then(
-                        if (isUser) Modifier.drawBehind {
-                            // V7 --bubble-me：linear-gradient(135deg) 左上→右下
-                            drawRect(
-                                Brush.linearGradient(
-                                    colors = listOf(auroraColors.bubbleMeStart, auroraColors.bubbleMeEnd),
-                                    start = androidx.compose.ui.geometry.Offset(0f, 0f),
-                                    end = androidx.compose.ui.geometry.Offset(size.width, size.height)
-                                )
-                            )
-                        } else Modifier.auroraGlassV3(
-                            GlassTierV3.Regular,
-                            night,
-                            AuroraChatTokens.MessageRadius.value.toInt(),
-                            scrolling = shouldStream,
-                            allowRenderEffect = false
-                        )
-                    )
-                    .then(
-                        if (!isUser) Modifier.drawWithContent {
-                            // 非 Generic border 位图路径在 0 尺寸首帧会崩——hairline 用轮廓描边
-                            drawContent()
-                            drawOutline(
-                                bubbleShape.createOutline(size, layoutDirection, this),
-                                auroraColors.hairline.copy(alpha = 0.55f),
-                                style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx())
-                            )
-                        } else Modifier
-                    )
-                    .pointerInput(Unit) {
-                        detectTapGestures(onLongPress = { onLongPress() })
-                    }
-                    .padding(horizontal = 14.dp, vertical = 10.dp)
-            ) {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+            // V9PM 气泡新装：AI=固定玻璃 / 用户=135° 渐变实心；非对称圆角 22/22/10/22；用户 shadow-low
+            val night = com.companion.cc.ui.theme.LocalVisualTheme.current.tokens.backdrop.isDark
+            val auroraColors = if (night) com.companion.cc.ui.designsystem.AuroraNight else com.companion.cc.ui.designsystem.AuroraDay
+            val bubbleShape = if (isUser)
+                RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp, bottomEnd = 10.dp, bottomStart = 22.dp)
+            else
+                RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomEnd = 20.dp, bottomStart = 6.dp)
+            Column(
+                modifier = Modifier
+                    .shadow(
+                        if (isUser) 4.dp else 0.dp,
+                        bubbleShape,
+                        ambientColor = if (night) Color(0x59000000) else Color(0x121C2230),
+                        spotColor = if (night) Color(0x59000000) else Color(0x121C2230)
+                    )
+                    .clip(bubbleShape)
+                    .then(
+                        if (isUser) Modifier.drawBehind {
+                            // V7 --bubble-me：linear-gradient(135deg) 左上→右下
+                            drawRect(
+                                Brush.linearGradient(
+                                    colors = listOf(auroraColors.bubbleMeStart, auroraColors.bubbleMeEnd),
+                                    start = androidx.compose.ui.geometry.Offset(0f, 0f),
+                                    end = androidx.compose.ui.geometry.Offset(size.width, size.height)
+                                )
+                            )
+                        } else Modifier.auroraGlassV3(
+                            GlassTierV3.Regular,
+                            night,
+                            AuroraChatTokens.MessageRadius.value.toInt(),
+                            scrolling = shouldStream,
+                            allowRenderEffect = false
+                        )
+                    )
+                    .then(
+                        if (!isUser) Modifier.drawWithContent {
+                            // 非 Generic border 位图路径在 0 尺寸首帧会崩——hairline 用轮廓描边
+                            drawContent()
+                            drawOutline(
+                                bubbleShape.createOutline(size, layoutDirection, this),
+                                auroraColors.hairline.copy(alpha = 0.55f),
+                                style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx())
+                            )
+                        } else Modifier
+                    )
+                    .pointerInput(Unit) {
+                        detectTapGestures(onLongPress = { onLongPress() })
+                    }
+                    .padding(horizontal = 14.dp, vertical = 10.dp)
+            ) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     // 图片附件（用户消息且有图片时显示）
                     if (isUser && !message.imageUrl.isNullOrBlank()) {
@@ -938,9 +953,9 @@ private fun MessageBubble(
                     }
 
                     // 对白（Markdown 渲染）
-                    if (displayText.isNotBlank()) {
+                    if (visibleDialogue.isNotBlank()) {
                         MarkdownText(
-                            text = displayText,
+                            text = visibleDialogue,
                             color = if (isUser)
                                 Color.White
                             else
@@ -949,10 +964,10 @@ private fun MessageBubble(
                     }
 
                     // 动作描述（仅 AI 消息且有动作时显示，弱化视觉存在感）
-                    if (!isUser && !message.action.isNullOrBlank()) {
+                    if (!isUser && !shouldStream && actionText.isNotBlank()) {
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = message.action,
+                            text = actionText,
                             style = MaterialTheme.typography.bodySmall,
                             color = auroraColors.inkMuted.copy(alpha = 0.85f),
                             fontSize = 13.sp,
@@ -1009,7 +1024,7 @@ private fun MessageBubble(
  * 打字指示器（三个跳动的小点）
  */
 @Composable
-private fun TypingIndicator(companionEmoji: String) {
+private fun TypingIndicator(companionEmoji: String, companionAvatar: String? = null) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1024,7 +1039,7 @@ private fun TypingIndicator(companionEmoji: String) {
                 .size(40.dp)
         ) {
             Box(contentAlignment = Alignment.Center) {
-                Text(text = companionEmoji, fontSize = 20.sp)
+                com.companion.cc.ui.components.CompanionAvatar(avatarUrl = companionAvatar, emoji = companionEmoji, size = 40.dp)
             }
         }
 
@@ -1104,65 +1119,85 @@ private fun ChatInputBar(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 // 图片按钮
-                IconButton(
+                V9PMIconButton(
+                    icon = Icons.Default.Photo,
+                    contentDescription = "选择图片",
                     onClick = onImageClick,
-                    modifier = Modifier.size(48.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Photo,
-                        contentDescription = "选择图片",
+                    size = 48.dp,
+                    iconSize = 20.dp,
+                    shape = smoothCorner(18.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+
+                // 语音输入按钮
+                if (showVoiceButton) {
+                    V9PMIconButton(
+                        icon = Icons.Default.Mic,
+                        contentDescription = "语音输入",
+                        onClick = onVoiceClick,
+                        size = 48.dp,
+                        iconSize = 20.dp,
+                        shape = smoothCorner(18.dp),
                         tint = MaterialTheme.colorScheme.primary
                     )
                 }
 
-                // 语音输入按钮
-                if (showVoiceButton) {
-                    IconButton(
-                        onClick = onVoiceClick,
-                        modifier = Modifier.size(48.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Mic,
-                            contentDescription = "语音输入",
-                            tint = MaterialTheme.colorScheme.primary
+                val inputShape = smoothCorner(18.dp)
+                val inputBorderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.42f)
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(inputShape)
+                        .background(
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f),
+                            inputShape
                         )
-                    }
-                }
-
-                OutlinedTextField(
-                    value = message,
-                    onValueChange = onMessageChange,
-                    modifier = Modifier.weight(1f),
-                    placeholder = {
-                        Text(
-                            if (selectedImageUri != null) "描述一下这张图片..."
-                            else "输入消息..."
-                        )
-                    },
-                    maxLines = 5,
-                    shape = smoothCorner(28.dp)   // V9PM 连续大圆角
-                )
-
-                FloatingActionButton(
-                    onClick = onSend,
-                    modifier = Modifier.size(48.dp),
-                    containerColor = if ((message.isNotBlank() || selectedImageUri != null) && !isSending)
-                        MaterialTheme.colorScheme.primary
-                    else
-                        MaterialTheme.colorScheme.surfaceVariant
+                        .drawBehind {
+                            // 活聊天输入框：由 V9PM 连续大 R 外壳绘制，避免 M3 默认边框盖住形状
+                            drawOutline(
+                                inputShape.createOutline(size, layoutDirection, this),
+                                inputBorderColor,
+                                style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx())
+                            )
+                        }
                 ) {
-                    if (isSending) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(24.dp),
-                            strokeWidth = 2.dp
-                        )
-                    } else {
-                        Icon(
-                            imageVector = Icons.Default.Send,
-                            contentDescription = "发送"
-                        )
-                    }
+                    androidx.compose.foundation.text.BasicTextField(
+                        value = message,
+                        onValueChange = onMessageChange,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 52.dp, max = 124.dp)
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                        textStyle = MaterialTheme.typography.bodyLarge.copy(
+                            color = MaterialTheme.colorScheme.onSurface
+                        ),
+                        maxLines = 5,
+                        decorationBox = { innerTextField ->
+                            Box {
+                                if (message.isEmpty()) {
+                                    Text(
+                                        if (selectedImageUri != null) "描述一下这张图片..." else "输入消息...",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        style = MaterialTheme.typography.bodyLarge
+                                    )
+                                }
+                                innerTextField()
+                            }
+                        }
+                    )
                 }
+
+                val canSend = (message.isNotBlank() || selectedImageUri != null) && !isSending
+                V9PMIconButton(
+                    icon = if (isSending) Icons.Default.HourglassTop else Icons.Default.Send,
+                    contentDescription = if (isSending) "正在发送" else "发送",
+                    onClick = onSend,
+                    enabled = canSend,
+                    size = 48.dp,
+                    iconSize = 20.dp,
+                    shape = smoothCorner(18.dp),
+                    tint = if (canSend) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
@@ -1182,118 +1217,86 @@ private fun MessageActionsMenu(
     onAddTag: () -> Unit,
     onShare: () -> Unit
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("消息操作") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                // 复制
-                TextButton(
-                    onClick = onCopy,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.ContentCopy,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("复制消息")
-                    Spacer(modifier = Modifier.weight(1f))
-                }
+    val night = LocalVisualTheme.current.tokens.backdrop.isDark
+    val colors = if (night) AuroraNight else AuroraDay
 
-                // 收藏/取消收藏
-                TextButton(
-                    onClick = onToggleFavorite,
-                    modifier = Modifier.fillMaxWidth()
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clickable(onClick = onDismiss),
+            contentAlignment = Alignment.Center
+        ) {
+            androidx.compose.animation.AnimatedVisibility(
+                visible = true,
+                enter = scaleIn(initialScale = 0.92f, animationSpec = tween(260, easing = AuroraCurves.BubbleEmphasized)) +
+                    fadeIn(tween(260, easing = AuroraCurves.BubbleEmphasized)),
+                exit = fadeOut(tween(160)),
+            ) {
+                V9PMDialogSurface(
+                    onDismissRequest = onDismiss,
+                    modifier = Modifier.widthIn(max = 360.dp)
                 ) {
-                    Icon(
-                        imageVector = if (message.isFavorited) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                        contentDescription = null,
-                        tint = if (message.isFavorited) MaterialTheme.colorScheme.error else Color.Unspecified,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(if (message.isFavorited) "取消收藏" else "收藏消息")
-                    Spacer(modifier = Modifier.weight(1f))
-                }
-
-                // 标记为重要
-                if (message.importance < 90) {
-                    TextButton(
-                        onClick = onMarkImportant,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Star,
-                            contentDescription = null,
-                            tint = LocalVisualTheme.current.tokens.status.importance,
-                            modifier = Modifier.size(20.dp)
+                    Column(Modifier.padding(horizontal = 10.dp, vertical = 12.dp)) {
+                        Text(
+                            "消息操作",
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                            color = colors.ink,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.SemiBold,
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("标记为重要")
-                        Spacer(modifier = Modifier.weight(1f))
+                        PopupActionRow(Icons.Default.ContentCopy, "复制消息", onCopy, colors.ink)
+                        PopupActionRow(
+                            if (message.isFavorited) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                            if (message.isFavorited) "取消收藏" else "收藏消息",
+                            onToggleFavorite,
+                            if (message.isFavorited) MaterialTheme.colorScheme.error else colors.ink,
+                        )
+                        if (message.importance < 90) {
+                            PopupActionRow(Icons.Default.Star, "标记为重要", onMarkImportant, LocalVisualTheme.current.tokens.status.importance)
+                        }
+                        PopupActionRow(Icons.Default.Label, "添加标签", onAddTag, colors.ink)
+                        PopupActionRow(Icons.Default.Share, "分享消息", onShare, colors.ink)
+                        PopupActionRow(Icons.Default.Delete, "删除消息", onDelete, MaterialTheme.colorScheme.error)
+                        Text(
+                            "取消",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable(onClick = onDismiss)
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            color = colors.inkMuted,
+                            fontSize = 14.sp,
+                        )
                     }
                 }
-
-                // 添加标签
-                TextButton(
-                    onClick = onAddTag,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Label,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("添加标签")
-                    Spacer(modifier = Modifier.weight(1f))
-                }
-
-                // 分享
-                TextButton(
-                    onClick = onShare,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Share,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("分享消息")
-                    Spacer(modifier = Modifier.weight(1f))
-                }
-
-                // 删除
-                TextButton(
-                    onClick = onDelete,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("删除消息", color = MaterialTheme.colorScheme.error)
-                    Spacer(modifier = Modifier.weight(1f))
-                }
-            }
-        },
-        confirmButton = {},
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("取消")
             }
         }
-    )
+    }
+}
+
+@Composable
+private fun PopupActionRow(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    tint: Color,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(12.dp))
+        Text(label, color = tint, fontSize = 15.sp)
+    }
 }
 
 /**
- * 功能菜单：记忆树 / 数据统计 / 数据管理 / 设置
+ * 功能菜单：记忆树 / 数据统计 / 数据管理 / 收藏夹
  */
 @Composable
 private fun FunctionMenu(
@@ -1301,46 +1304,39 @@ private fun FunctionMenu(
     onMemoryClick: () -> Unit,
     onStatsClick: () -> Unit,
     onDataClick: () -> Unit,
-    onSettingsClick: () -> Unit,
     onFavoritesClick: () -> Unit
 ) {
+    val night = LocalVisualTheme.current.tokens.backdrop.isDark
+    val colors = if (night) AuroraNight else AuroraDay
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .wrapContentSize(Alignment.TopEnd)
-            .padding(top = 56.dp, end = 8.dp)
+            .clickable(onClick = onDismiss),
+        contentAlignment = Alignment.TopEnd
     ) {
-        DropdownMenu(
-            expanded = true,
-            onDismissRequest = onDismiss
+        GlassSurface(
+            modifier = Modifier
+                .padding(top = 126.dp, end = 12.dp)
+                .widthIn(min = 210.dp, max = 280.dp),
+            shape = smoothCorner(28.dp),
+            contentPadding = PaddingValues(0.dp),
+            useStrongFill = true,
+            enableTouchFeedback = false
         ) {
-            FunctionMenuItem(Icons.Default.AccountTree, "记忆树", onMemoryClick)
-            FunctionMenuItem(Icons.Default.Favorite, "收藏夹", onFavoritesClick)
-            FunctionMenuItem(Icons.Default.BarChart, "数据统计", onStatsClick)
-            FunctionMenuItem(Icons.Default.Storage, "数据管理", onDataClick)
-            FunctionMenuItem(Icons.Default.Settings, "设置", onSettingsClick)
+            Column(Modifier.padding(vertical = 10.dp)) {
+                Text(
+                    "去看看",
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    color = colors.inkMuted,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                PopupActionRow(Icons.Default.AccountTree, "记忆树", onMemoryClick, colors.ink)
+                PopupActionRow(Icons.Default.Favorite, "收藏夹", onFavoritesClick, colors.ink)
+                PopupActionRow(Icons.Default.BarChart, "数据统计", onStatsClick, colors.ink)
+                PopupActionRow(Icons.Default.Storage, "数据管理", onDataClick, colors.ink)
+            }
         }
-    }
-}
-
-@Composable
-private fun FunctionMenuItem(
-    icon: ImageVector,
-    label: String,
-    onClick: () -> Unit
-) {
-    TextButton(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            modifier = Modifier.size(20.dp)
-        )
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(label)
-        Spacer(modifier = Modifier.weight(1f))
     }
 }
 
@@ -1451,13 +1447,14 @@ private fun ImagePreview(
                 }
             }
 
-            IconButton(onClick = onClear) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = "取消选择",
-                    tint = MaterialTheme.colorScheme.error
-                )
-            }
+            V9PMIconButton(
+                icon = Icons.Default.Close,
+                contentDescription = "取消选择",
+                onClick = onClear,
+                size = 42.dp,
+                iconSize = 18.dp,
+                tint = MaterialTheme.colorScheme.error
+            )
         }
     }
 }

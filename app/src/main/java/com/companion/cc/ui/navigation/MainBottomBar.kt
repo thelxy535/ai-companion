@@ -38,6 +38,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.companion.cc.ui.designsystem.smoothCorner
 
 private data class TopLevelDestination(
     val screen: Screen,
@@ -74,13 +75,13 @@ fun MainBottomBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(
-                    if (night) Color(0xCC181D2E) else Color(0xE6FFFFFF),
-                    RoundedCornerShape(28.dp)
+                    if (night) Color(0x1F181D2E) else Color(0x2EFFFFFF),
+                    com.companion.cc.ui.designsystem.smoothCorner(28.dp)
                 )
                 .border(
                     1.dp,
                     if (night) Color(0x1FFFFFFF) else Color(0xB8FFFFFF),
-                    RoundedCornerShape(28.dp)
+                    com.companion.cc.ui.designsystem.smoothCorner(28.dp)
                 )
                 .padding(vertical = 8.dp),
             horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp)
@@ -90,7 +91,11 @@ fun MainBottomBar(
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .pressableV5({ onNavigate(destination.screen.route) }, isNight = night)
+                        .pressableV5(
+                            onClick = { onNavigate(destination.screen.route) },
+                            isNight = night,
+                            outlineShape = RoundedCornerShape(16.dp)
+                        )
                         .padding(vertical = 4.dp),
                     horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
                 ) {

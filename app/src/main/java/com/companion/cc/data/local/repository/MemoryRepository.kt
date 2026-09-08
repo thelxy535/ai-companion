@@ -44,6 +44,110 @@ class MemoryRepository(
     private val retrievalDao: MemoryRetrievalDao
 ) {
     fun observePendingReviews(scopeKey: String): Flow<List<MemoryReviewEntity>> = reviewDao.observePending(scopeKey)
+
+    fun observeDeferredReviews(scopeKey: String): Flow<List<MemoryReviewEntity>> = reviewDao.observeDeferred(scopeKey)
+
+    /** 手动恢复：仅允许 deferred -> pending，用于用户在审核页找回延后的候选。 */
+    suspend fun restoreReview(
+        scopeKey: String,
+        reviewId: String
+    ): Result<Unit> = runCatching {
+        val review = requireNotNull(
+            reviewDao.findByIdForScope(scopeKey, reviewId)
+        ) { "Memory review not found in scope: $reviewId" }
+        require(review.status == "deferred") { "Only deferred reviews can be restored" }
+        reviewDao.update(
+            review.copy(status = "pending", resolvedAt = null, resolutionNote = "restored by user")
+        )
+    }
+
+    /** 到期自动恢复：延后超过 cooldown 的候选在打开审核页时回归待审核队列。 */
+    suspend fun restoreDueDeferredReviews(
+        scopeKey: String,
+        cooldownMs: Long = 24L * 3_600_000L,
+        now: Long = System.currentTimeMillis()
+    ): Int = reviewDao.restoreDueDeferred(scopeKey, now - cooldownMs)
+
+    /**
+     * 叙事定期自演化（V9PM 深度②）：直接写入新的关系叙事并取代旧叙事。
+     * 与审核接受路径同级的审计保障：版本记录 + 证据绑定，旧叙事可追溯。
+     */
+    suspend fun evolveNarrative(
+        scopeKey: String,
+        content: String,
+        confidence: Double,
+        sourceIds: List<String>,
+        now: Long = System.currentTimeMillis()
+    ): Result<Unit> = runCatching {
+        database.withTransaction {
+            require(content.isNotBlank()) { "narrative content must not be blank" }
+            // 取代旧的 active 关系叙事
+            nodeDao.findActiveByKindAndSubject(
+                scopeKey,
+                com.companion.cc.domain.memory.NarrativeKinds.RELATIONSHIP,
+                "relationship",
+                "pair"
+            ).forEach { previous ->
+                nodeDao.update(
+                    previous.copy(status = "superseded", validUntil = now, updatedAt = now)
+                )
+            }
+            val digest = java.security.MessageDigest.getInstance("SHA-256")
+                .digest(("$scopeKey|narrative|$now|$content").toByteArray(Charsets.UTF_8))
+                .joinToString("") { byte -> "%02x".format(byte) }
+            val nodeId = "node:$digest"
+            val node = MemoryNodeEntity(
+                id = nodeId,
+                scopeKey = scopeKey,
+                kind = com.companion.cc.domain.memory.NarrativeKinds.RELATIONSHIP,
+                subjectRole = "relationship",
+                subjectKey = "pair",
+                title = "关系理解",
+                content = content,
+                confidence = confidence,
+                validFrom = now,
+                createdAt = now,
+                updatedAt = now
+            )
+            nodeDao.insert(node)
+            sourceIds.take(5).forEach { sourceId ->
+                sourceDao.findByIdForScope(scopeKey, sourceId)?.let {
+                    evidenceDao.insertAll(listOf(
+                        com.companion.cc.data.local.entity.MemoryEvidenceEntity(
+                            nodeId = nodeId,
+                            sourceId = sourceId,
+                            summarySnapshot = content,
+                            createdAt = now
+                        )
+                    ))
+                }
+            }
+            versionDao.insert(
+                com.companion.cc.data.local.entity.MemoryVersionEntity(
+                    nodeId = nodeId,
+                    version = 1,
+                    kind = node.kind,
+                    title = node.title,
+                    content = node.content,
+                    importance = node.importance,
+                    confidence = node.confidence,
+                    validFrom = node.validFrom,
+                    validUntil = node.validUntil,
+                    changeReason = "periodic auto evolution",
+                    actor = "system-evolution",
+                    createdAt = now
+                )
+            )
+        }
+    }
+
+    /** 读取当前生效的指定类型节点（供 Prompt 注入等一次性读取）。 */
+    suspend fun getActiveNodesByKind(
+        scopeKey: String,
+        kind: String,
+        limit: Int = 3,
+        now: Long = System.currentTimeMillis()
+    ): List<MemoryNodeEntity> = nodeDao.findActiveByKind(scopeKey, kind, now, limit)
     fun observeNodes(
         scopeKey: String,
         kind: String = "",
@@ -167,6 +271,15 @@ class MemoryRepository(
                 requireNotNull(sourceDao.findByIdForScope(scopeKey, sourceId)) {
                     "Memory source not found in scope: $sourceId"
                 }
+            }
+            // 自我叙事：同一主题的新叙事接受时取代旧叙事（旧节点关闭有效期，保留版本历史）
+            if (review.kind == com.companion.cc.domain.memory.NarrativeKinds.RELATIONSHIP) {
+                nodeDao.findActiveByKindAndSubject(scopeKey, review.kind, subjectRole, subjectKey)
+                    .forEach { previous ->
+                        nodeDao.update(
+                            previous.copy(status = "superseded", validUntil = now, updatedAt = now)
+                        )
+                    }
             }
             val node = MemoryNodeEntity(
                 id = nodeId, scopeKey = scopeKey, kind = review.kind,

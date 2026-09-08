@@ -114,12 +114,18 @@ fun rememberStaggerFirstPlay(routeKey: String): Boolean {
 
 /** 单项进场：m-rise 280ms bezier(.2,0,0,1)（opacity 0→1 + translateY 10dp→0），delay = index*intervalMs，达 cap 不播。 */
 @Composable
-fun Modifier.staggerRise(played: Boolean, index: Int, intervalMs: Int = 40, cap: Int = 8): Modifier {
+fun Modifier.staggerRise(
+    played: Boolean,
+    index: Int,
+    intervalMs: Int = 40,
+    cap: Int = 8,
+    durationMillis: Int = AuroraDuration.Rise
+): Modifier {
     if (!played || index >= cap) return this
     val risePx = with(LocalDensity.current) { 10.dp.toPx() }
     val progress = remember { Animatable(0f) }
     LaunchedEffect(Unit) {
-        progress.animateTo(1f, tween(AuroraDuration.Rise, delayMillis = index * intervalMs, easing = AuroraCurves.M3Emphasized))
+        progress.animateTo(1f, tween(durationMillis, delayMillis = index * intervalMs, easing = AuroraCurves.M3Emphasized))
     }
     return graphicsLayer {
         alpha = progress.value

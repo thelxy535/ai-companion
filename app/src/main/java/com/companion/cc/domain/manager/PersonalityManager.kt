@@ -178,7 +178,7 @@ class PersonalityManager @Inject constructor(
         // 4. 长期记忆（重要事件）
         if (memoryContext.longTerm.isNotEmpty()) {
             parts.add("## 重要记忆")
-            memoryContext.longTerm.take(5).forEach { memory ->
+            memoryContext.longTerm.forEach { memory ->
                 parts.add("- ${memory.content}")
             }
             parts.add("")
@@ -187,7 +187,7 @@ class PersonalityManager @Inject constructor(
         // 5. 中期记忆（近期摘要）
         if (memoryContext.midTerm.isNotEmpty()) {
             parts.add("## 近期对话")
-            memoryContext.midTerm.take(3).forEach { summary ->
+            memoryContext.midTerm.forEach { summary ->
                 parts.add("- ${summary.summary}")
             }
             parts.add("")
@@ -196,7 +196,7 @@ class PersonalityManager @Inject constructor(
         // 5. 短期记忆（最近交流）
         if (memoryContext.shortTerm.isNotEmpty()) {
             parts.add("## 刚才说的")
-            memoryContext.shortTerm.takeLast(5).forEach { recentMsg ->
+            memoryContext.shortTerm.forEach { recentMsg ->
                 parts.add("- $recentMsg")
             }
             parts.add("")

@@ -84,12 +84,10 @@ class MidTermMemoryManager @Inject constructor(
         endTime: Long
     ): MemoryLayered.MidTerm? {
         // 获取这一天的所有消息
-        val messages = messageRepository.getMessages(
+        val messages = messageRepository.getAllMessagesOnce(
             userId = userId,
-            companionId = companionId,
-            limit = 1000,
-            offset = 0
-        ).first().filter { message ->
+            companionId = companionId
+        ).filter { message ->
             message.timestamp in startTime..endTime
         }
 

@@ -10,14 +10,13 @@ import android.util.Log
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.companion.cc.ui.chat.NaturalChatScreen
@@ -35,14 +34,17 @@ import com.companion.cc.ui.settings.SettingsScreen
 import com.companion.cc.ui.splash.SplashScreen
 import com.companion.cc.ui.stats.ImmersiveStatsScreen
 import com.companion.cc.ui.theme.VisualRoute
+import com.companion.cc.ui.components.V9PMActionButton
 import com.companion.cc.ui.theme.VisualScene
 
 @Composable
 fun NavGraph(
     navController: NavHostController,
-    contentPadding: PaddingValues = PaddingValues()
+    contentPadding: PaddingValues = PaddingValues(),
+    openMemoryInboxCompanionId: String? = null,
+    openCompanionId: String? = null
 ) {
-    // V7 m-rise：10dp 初始位移换算像素
+    // 页面级唯一转场参数：内容只做一次轻量 m-rise，背景和 Root Chrome 保持稳定
     val riseOffsetPx = with(androidx.compose.ui.platform.LocalDensity.current) { 10.dp.roundToPx() }
     NavHost(
         navController = navController,
@@ -51,36 +53,54 @@ fun NavGraph(
             // V9PM 修复：去掉此处不透明底色——根容器极光需要透出，否则切换时露出纯色底（黑闪）
             .padding(bottom = contentPadding.calculateBottomPadding()),
         startDestination = Screen.Splash.route,
-        // V7 m-rise 设计稿精确值：280ms cubic-bezier(.2,0,0,1)，opacity 0→1 + translateY 10dp→0
+        // V9PM：统一页面转场。聊天不再额外 scale/26dp/initialAlpha，避免重列表进入时卡顿与跳动
         enterTransition = {
-            val route = targetState.destination.route
-            val isChat = route == Screen.Chat.route || route == Screen.CustomCharacterChat.route
-            if (isChat) {
-                // V9PM：聊天页重组重，滑动会显卡/跳——进聊天用纯淡化
-                androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(220, easing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f)))
+            if (initialState.destination.route == Screen.Splash.route &&
+                targetState.destination.route == Screen.Home.route
+            ) {
+                androidx.compose.animation.fadeIn(
+                    androidx.compose.animation.core.tween(180, easing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f))
+                ) + androidx.compose.animation.slideInVertically(
+                    androidx.compose.animation.core.tween(180, easing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f))
+                ) { riseOffsetPx / 2 }
             } else {
-                androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(280, easing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f))) +
-                    androidx.compose.animation.slideInVertically(
-                        androidx.compose.animation.core.tween(280, easing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f))
-                    ) { riseOffsetPx }
+                androidx.compose.animation.fadeIn(
+                    androidx.compose.animation.core.tween(280, easing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f))
+                ) + androidx.compose.animation.slideInVertically(
+                    androidx.compose.animation.core.tween(280, easing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f))
+                ) { riseOffsetPx }
             }
         },
-        exitTransition = { androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(160)) },
-                popEnterTransition = {
-            val route = targetState.destination.route
-            if (route == Screen.Chat.route || route == Screen.CustomCharacterChat.route) {
-                androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(220, easing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f)))
-            } else {
-                androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(220))
-            }
+        exitTransition = {
+            if (initialState.destination.route == Screen.Splash.route &&
+                targetState.destination.route == Screen.Home.route
+            ) androidx.compose.animation.ExitTransition.None
+            else androidx.compose.animation.fadeOut(
+                androidx.compose.animation.core.tween(160, easing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f))
+            )
         },
-        // V9PM 修复：返回不再瞬间消失，与前进同族交叉淡出（动画统一）
-        popExitTransition = { androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(160)) }
+        popEnterTransition = {
+            androidx.compose.animation.fadeIn(
+                androidx.compose.animation.core.tween(220, easing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f))
+            )
+        },
+        popExitTransition = {
+            androidx.compose.animation.fadeOut(
+                androidx.compose.animation.core.tween(160, easing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f))
+            )
+        }
     ) {
         composable(Screen.Splash.route) {
             SplashScreen(
                 onNavigateToHome = {
-                    navController.navigate(Screen.Home.route) {
+                    val destination = openMemoryInboxCompanionId
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let(Screen.MemoryReview::createRoute)
+                        ?: openCompanionId
+                            ?.takeIf { it.isNotBlank() }
+                            ?.let(Screen.Chat::createRoute)
+                        ?: Screen.Home.route
+                    navController.navigate(destination) {
                         popUpTo(Screen.Splash.route) { inclusive = true }
                     }
                 }
@@ -126,9 +146,7 @@ fun NavGraph(
 
         composable(Screen.Settings.route) {
             VisualScene(route = VisualRoute.UTILITY) {
-                SettingsScreen(
-                    onNavigateBack = { navController.navigateUp() }
-                )
+                SettingsScreen()
             }
         }
 
@@ -364,6 +382,7 @@ fun NavGraph(
                 NaturalChatScreen(
                     companionId = characterId,
                     onNavigateBack = { navController.navigateUp() },
+                    onNavigateToMemory = { navController.navigateSafely(Screen.Memory.createRoute(characterId)) },
                     onNavigateToStats = { navController.navigateSafely(Screen.Stats.createRoute(characterId)) },
                     onNavigateToData = { navController.navigateSafely(Screen.DataManagement.createRoute(characterId)) },
                     onNavigateToFavorites = { navController.navigateSafely(Screen.Favorites.createRoute(characterId)) },
@@ -372,11 +391,16 @@ fun NavGraph(
             }
         }
 
+        composable(Screen.CharacterTestChat.route) {
+            com.companion.cc.ui.character.CharacterTestChatScreen(onNavigateBack = { navController.navigateUp() })
+        }
+
         composable(Screen.CharacterCreate.route) {
             VisualScene(route = VisualRoute.UTILITY) {
                 com.companion.cc.ui.character.CharacterCustomizationScreen(
                     characterId = null,
-                    onNavigateBack = { navController.navigateUp() }
+                    onNavigateBack = { navController.navigateUp() },
+                    onTestChat = { navController.navigate(Screen.CharacterTestChat.route) }
                 )
             }
         }
@@ -392,7 +416,8 @@ fun NavGraph(
             VisualScene(route = VisualRoute.UTILITY, companionId = characterId) {
                 com.companion.cc.ui.character.CharacterCustomizationScreen(
                     characterId = characterId,
-                    onNavigateBack = { navController.navigateUp() }
+                    onNavigateBack = { navController.navigateUp() },
+                    onTestChat = { navController.navigate(Screen.CharacterTestChat.route) }
                 )
             }
         }
@@ -417,8 +442,11 @@ internal fun InvalidRouteScreen(
             color = MaterialTheme.colorScheme.error
         )
         Spacer(modifier = androidx.compose.ui.Modifier.height(16.dp))
-        Button(onClick = onNavigateBack) {
-            Text("返回")
-        }
+        V9PMActionButton(
+            label = "返回",
+            onClick = onNavigateBack,
+            modifier = androidx.compose.ui.Modifier.fillMaxWidth(),
+            height = 44.dp
+        )
     }
 }

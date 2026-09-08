@@ -18,6 +18,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -28,6 +29,7 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -55,6 +57,7 @@ fun Modifier.pressableV5(
     onClick: () -> Unit,
     haptic: Boolean = true,
     isNight: Boolean = false,
+    outlineShape: Shape = RoundedCornerShape(18.dp),
 ): Modifier = composed {
     val interaction = remember { MutableInteractionSource() }
     val isPressed by interaction.collectIsPressedAsState()
@@ -78,9 +81,6 @@ fun Modifier.pressableV5(
     val sink by animateDpAsState(
         if (isPressed) AuroraTouchSpecV5.pressedSink else 0.dp, dpSpringSpec, label = "sink",
     )
-    val elevation by animateDpAsState(
-        if (isPressed) 6.dp else 0.dp, dpSpringSpec, label = "elevation",
-    )
     // V5: pressed tint + accent 描边(双色)
     val tint by animateFloatAsState(
         if (isPressed) AuroraTouchSpecV5.pressedTint else 0f, tween(90), label = "tint",
@@ -92,9 +92,10 @@ fun Modifier.pressableV5(
     )
 
     this
+        // Keep the pressed tint and scale within the visible control outline.
+        .clip(outlineShape)
         .graphicsLayer {
             scaleX = scale; scaleY = scale
-            shadowElevation = elevation.toPx()
             translationY = sink.toPx()
         }
         .drawWithContent {

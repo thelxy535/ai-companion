@@ -2,6 +2,9 @@ package com.companion.cc.ui.memory
 
 import com.companion.cc.ui.designsystem.auroraScreenBackground
 import com.companion.cc.ui.theme.LocalVisualTheme
+import com.companion.cc.ui.components.V9PMChoiceRow
+import com.companion.cc.ui.components.V9PMTextField
+import com.companion.cc.ui.components.V9PMTopBar
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -19,15 +22,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Divider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -55,14 +53,14 @@ fun MemoryLibraryScreen(
     Scaffold(
         modifier = Modifier.auroraScreenBackground(LocalVisualTheme.current.tokens.backdrop.isDark),
         topBar = {
-            TopAppBar(
-                modifier = Modifier.padding(top = 44.dp),
+            V9PMTopBar(
                 title = { Text("记忆库", fontWeight = FontWeight.SemiBold) },
-                navigationIcon = { IconButton(onClick = onNavigateBack) { Icon(Icons.Default.ArrowBack, "返回") } },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                onNavigateBack = onNavigateBack,
+                modifier = Modifier.padding(top = 44.dp)
             )
         },
-        containerColor = Color.Transparent
+        containerColor = Color.Transparent,
+        contentColor = MaterialTheme.colorScheme.onSurface
     ) { padding ->
         Column(
             Modifier
@@ -71,13 +69,12 @@ fun MemoryLibraryScreen(
                 .navigationBarsPadding()
                 .padding(horizontal = 16.dp)
         ) {
-            OutlinedTextField(
+            V9PMTextField(
                 value = query,
                 onValueChange = viewModel::setQuery,
                 modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                placeholder = { Text("搜索正式记忆") },
-                leadingIcon = { Icon(Icons.Default.Search, "搜索") },
-                singleLine = true
+                placeholder = "搜索正式记忆",
+                leadingIcon = Icons.Default.Search
             )
             Column(
                 modifier = Modifier
@@ -102,19 +99,18 @@ private fun MemoryStatusFilterRow(
     selectedStatus: String,
     onStatusSelected: (String) -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onStatusSelected(memoryFilterValue(status)) }
-            .padding(vertical = 8.dp),
-        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
-    ) {
-        RadioButton(
-            selected = selectedStatus == status,
-            onClick = { onStatusSelected(memoryFilterValue(status)) }
-        )
-        Text(label)
-    }
+    V9PMChoiceRow(
+        title = label,
+        selected = selectedStatus == status,
+        onClick = { onStatusSelected(memoryFilterValue(status)) },
+        modifier = Modifier.padding(vertical = 2.dp),
+        trailing = {
+            androidx.compose.material3.RadioButton(
+                selected = selectedStatus == status,
+                onClick = null
+            )
+        }
+    )
 }
 
 @Composable

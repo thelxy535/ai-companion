@@ -60,6 +60,11 @@ class CharacterCustomizationViewModel @Inject constructor(
 
     private val _personality = MutableStateFlow(PersonalityTraits.default())
     val personality: StateFlow<PersonalityTraits> = _personality.asStateFlow()
+    val naturalPersonalityDescription: StateFlow<String> =
+        _personality.map { it.naturalDescription() }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, "")
+    private val _rhythm = MutableStateFlow(com.companion.cc.domain.character.CompanionRhythm())
+    val rhythm: StateFlow<com.companion.cc.domain.character.CompanionRhythm> = _rhythm.asStateFlow()
 
     private val _behaviorRules = MutableStateFlow(BehaviorRules.default())
     val behaviorRules: StateFlow<BehaviorRules> = _behaviorRules.asStateFlow()
@@ -115,6 +120,7 @@ class CharacterCustomizationViewModel @Inject constructor(
             exampleDialogues = _exampleDialogues.value,
             voiceConfig = _voiceConfig.value,
             behaviorRules = _behaviorRules.value,
+            rhythm = _rhythm.value,
         )
     }
 
@@ -131,6 +137,7 @@ class CharacterCustomizationViewModel @Inject constructor(
                     _backstory.value = character.backstory
                     _greetingMessage.value = character.greetingMessage
                     _personality.value = character.personality
+                    _rhythm.value = character.rhythm
                     _behaviorRules.value = character.behaviorRules ?: BehaviorRules.default()
                     _voiceConfig.value = character.voiceConfig ?: VoiceConfig.default()
                     _exampleDialogues.value = character.exampleDialogues
@@ -197,6 +204,7 @@ class CharacterCustomizationViewModel @Inject constructor(
                             systemPromptOverride = _systemPromptOverride.value,
                             postHistoryInstructions = _postHistoryInstructions.value,
                             characterBook = _characterBook.value,
+                            rhythm = _rhythm.value,
                         )
                     )
                 } ?: characterManager.createCharacter(
@@ -218,6 +226,7 @@ class CharacterCustomizationViewModel @Inject constructor(
                     systemPromptOverride = _systemPromptOverride.value,
                     postHistoryInstructions = _postHistoryInstructions.value,
                     characterBook = _characterBook.value,
+                    rhythm = _rhythm.value,
                 )
                 CharacterSaveState.Success(saved.id)
             } catch (error: Exception) {
@@ -344,6 +353,20 @@ class CharacterCustomizationViewModel @Inject constructor(
         _personality.value = value
     }
 
+    fun updateNaturalPersonalityDescription(value: String) {
+        _personality.value = _personality.value.withNaturalDescription(value)
+    }
+
+    fun updateCustomPersonalityTrait(key: String, value: String) {
+        val traits = _personality.value.customTraits.toMutableMap()
+        if (value.isBlank()) traits.remove(key) else traits[key] = value
+        _personality.value = _personality.value.copy(customTraits = traits.toMap())
+    }
+
+    fun updateRhythm(value: com.companion.cc.domain.character.CompanionRhythm) {
+        _rhythm.value = value
+    }
+
     fun updatePersonalityTrait(trait: String, value: Float) {
         _personality.value = when (trait) {
             "openness" -> _personality.value.copy(openness = value)
@@ -409,6 +432,7 @@ class CharacterCustomizationViewModel @Inject constructor(
         _backstory.value = ""
         _greetingMessage.value = "你好，很高兴见到你！"
         _personality.value = PersonalityTraits.default()
+        _rhythm.value = com.companion.cc.domain.character.CompanionRhythm()
         _behaviorRules.value = BehaviorRules.default()
         _voiceConfig.value = VoiceConfig.default()
         _exampleDialogues.value = emptyList()
@@ -439,6 +463,7 @@ class CharacterCustomizationViewModel @Inject constructor(
                     _backstory.value != existing.backstory ||
                     _greetingMessage.value != existing.greetingMessage ||
                     _personality.value != existing.personality ||
+                    _rhythm.value != existing.rhythm ||
                     _behaviorRules.value != (existing.behaviorRules ?: BehaviorRules.default()) ||
                     _voiceConfig.value != (existing.voiceConfig ?: VoiceConfig.default()) ||
                     _exampleDialogues.value != existing.exampleDialogues ||
@@ -457,6 +482,7 @@ class CharacterCustomizationViewModel @Inject constructor(
                     _backstory.value.isNotBlank() ||
                     _greetingMessage.value != "你好，很高兴见到你！" ||
                     _personality.value != PersonalityTraits.default() ||
+                    _rhythm.value != com.companion.cc.domain.character.CompanionRhythm() ||
                     _behaviorRules.value != BehaviorRules.default() ||
                     _voiceConfig.value != VoiceConfig.default() ||
                     _exampleDialogues.value.isNotEmpty() ||

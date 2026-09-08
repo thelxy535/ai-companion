@@ -7,9 +7,14 @@ import com.companion.cc.data.local.dao.StatsDao
 import com.companion.cc.domain.model.Message
 import com.companion.cc.domain.model.MessageRole
 import com.companion.cc.domain.model.MessagesByDate
+import com.companion.cc.domain.memory.GraphQuery
+import com.companion.cc.domain.memory.GraphSnapshot
+import com.companion.cc.domain.memory.MemoryGraphRepository
+import com.companion.cc.domain.memory.MemoryScopeKey
 import com.companion.cc.domain.identity.CurrentUserProvider
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -19,11 +24,15 @@ import javax.inject.Inject
 class MemoryTreeViewModel @Inject constructor(
     private val statsDao: StatsDao,
     private val settingsManager: SettingsManager,
-    private val currentUserProvider: CurrentUserProvider
+    private val currentUserProvider: CurrentUserProvider,
+    private val memoryGraphRepository: MemoryGraphRepository
 ) : ViewModel() {
 
     private val _messagesByDate = MutableStateFlow<List<MessagesByDate>>(emptyList())
     val messagesByDate: StateFlow<List<MessagesByDate>> = _messagesByDate.asStateFlow()
+
+    private val _graph = MutableStateFlow<GraphSnapshot?>(null)
+    val graph: StateFlow<GraphSnapshot?> = _graph.asStateFlow()
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
@@ -38,47 +47,69 @@ class MemoryTreeViewModel @Inject constructor(
     private var currentFilter: String = "全部"
     private var currentSearchQuery: String = ""
     private var currentCompanionId: String? = null
+    private var loadJob: Job? = null
+    private var loadGeneration = 0L
 
     fun loadMessages(companionId: String? = currentCompanionId) {
         currentCompanionId = companionId
-        viewModelScope.launch {
+        val generation = ++loadGeneration
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             _isLoading.value = true
 
             try {
                 val userId = currentUserProvider.requireUserId()
-
-                // 获取统计信息
-                _totalMessages.value = companionId?.let {
-                    statsDao.getTotalMessagesForCompanion(userId, it)
-                } ?: statsDao.getTotalMessages(userId)
-                _totalDays.value = companionId?.let {
-                    statsDao.getTotalDaysForCompanion(userId, it)
-                } ?: statsDao.getTotalDays(userId)
-
-                // 获取按日期分组的消息计数
-                val dateCounts = companionId?.let {
-                    statsDao.getMessageCountByDateForCompanion(userId, it)
-                } ?: statsDao.getMessageCountByDate(userId)
-
-                // 获取每个日期的消息
-                val messagesByDate = dateCounts.map { dateCount ->
-                    val messages = companionId?.let {
-                        statsDao.getMessagesByDateForCompanion(userId, it, dateCount.date)
-                    } ?: statsDao.getMessagesByDate(userId, dateCount.date)
-                    MessagesByDate(
-                        date = dateCount.date,
-                        messages = messages.map { it.toDomain() },
-                        count = dateCount.count
-                    )
+                val result = run {
+                    val totalMessages = companionId?.let {
+                        statsDao.getTotalMessagesForCompanion(userId, it)
+                    } ?: statsDao.getTotalMessages(userId)
+                    val totalDays = companionId?.let {
+                        statsDao.getTotalDaysForCompanion(userId, it)
+                    } ?: statsDao.getTotalDays(userId)
+                    val dateCounts = companionId?.let {
+                        statsDao.getMessageCountByDateForCompanion(userId, it)
+                    } ?: statsDao.getMessageCountByDate(userId)
+                    val entities = companionId?.let {
+                        statsDao.getMessagesForCompanion(userId, it)
+                    } ?: statsDao.getAllMessagesForUser(userId)
+                    val dateFormatter = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).apply {
+                        timeZone = java.util.TimeZone.getTimeZone("UTC")
+                    }
+                    val messagesByDate = entities
+                        .groupBy { entity -> dateFormatter.format(java.util.Date(entity.timestamp)) }
+                        .map { (date, messages) ->
+                            MessagesByDate(
+                                date = date,
+                                messages = messages.map { it.toDomain() },
+                                count = dateCounts.firstOrNull { it.date == date }?.count ?: messages.size
+                            )
+                        }
+                        .sortedByDescending { it.date }
+                    Triple(totalMessages, totalDays, messagesByDate)
                 }
 
-                allMessages = messagesByDate
+                val graphSnapshot = companionId?.let { id ->
+                    runCatching {
+                        memoryGraphRepository.project(
+                            GraphQuery(
+                                scopeKey = MemoryScopeKey.forCharacter(userId, id),
+                                asOf = System.currentTimeMillis()
+                            )
+                        )
+                    }.getOrNull()
+                }
+                if (generation != loadGeneration || companionId != currentCompanionId) return@launch
+                _totalMessages.value = result.first
+                _totalDays.value = result.second
+                _graph.value = graphSnapshot
+                allMessages = result.third
                 applyFilters()
-
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (_: Exception) {
                 // Keep the previous content visible when a reload fails.
             } finally {
-                _isLoading.value = false
+                if (generation == loadGeneration) _isLoading.value = false
             }
         }
     }

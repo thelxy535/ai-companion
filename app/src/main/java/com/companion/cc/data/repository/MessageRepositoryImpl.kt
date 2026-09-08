@@ -25,6 +25,44 @@ class MessageRepositoryImpl @Inject constructor(
             }
     }
 
+    override fun getLatestMessages(
+        userId: String,
+        companionId: String,
+        limit: Int
+    ): Flow<List<Message>> {
+        // DESC 取最新 N 条后翻回升序，供 reverseLayout 聊天列表使用
+        return messageDao.getLatestMessages(userId, companionId, limit)
+            .map { entities -> entities.map { it.toDomain() }.reversed() }
+    }
+
+    override suspend fun getLatestMessagesOnce(
+        userId: String,
+        companionId: String,
+        limit: Int
+    ): List<Message> = messageDao.getLatestMessagesOnce(userId, companionId, limit)
+        .map { it.toDomain() }
+        .reversed()
+
+    override suspend fun getProactiveMessagesOnce(
+        userId: String,
+        companionId: String
+    ): List<Message> = messageDao.getProactiveMessagesOnce(userId, companionId)
+        .map { it.toDomain() }
+
+    override suspend fun getAllMessagesOnce(
+        userId: String,
+        companionId: String
+    ): List<Message> = messageDao.getAllMessagesOnce(userId, companionId)
+        .map { it.toDomain() }
+
+    override suspend fun searchMessagesOnce(
+        userId: String,
+        companionId: String?,
+        query: String
+    ): List<Message> = messageDao.searchMessagesOnce(userId, companionId, query)
+        .map { it.toDomain() }
+        .reversed()
+
     override fun getAllMessages(userId: String): Flow<List<Message>> =
         messageDao.getAllMessages(userId).map { entities -> entities.map { it.toDomain() } }
 
@@ -36,9 +74,11 @@ class MessageRepositoryImpl @Inject constructor(
         messageDao.insertMessages(messages.map { it.toEntity() })
     }
 
-    override suspend fun getMessageCount(userId: String): Int {
-        return messageDao.getMessageCount(userId)
-    }
+    override suspend fun getLatestCompanionId(userId: String): String? =
+        messageDao.getLatestCompanionId(userId)
+
+    override suspend fun getMessageCount(userId: String): Int =
+        messageDao.getMessageCount(userId)
 
     override fun observeMessageCount(userId: String): Flow<Int> =
         messageDao.observeMessageCount(userId)
@@ -86,7 +126,8 @@ class MessageRepositoryImpl @Inject constructor(
         action = action,
         imageUrl = imageUrl,
         imageAnalysis = imageAnalysis,
-        isFavorited = isFavorited
+        isFavorited = isFavorited,
+        origin = origin
     )
 
     private fun Message.toEntity() = MessageEntity(
@@ -105,7 +146,8 @@ class MessageRepositoryImpl @Inject constructor(
         action = action,
         imageUrl = imageUrl,
         imageAnalysis = imageAnalysis,
-        isFavorited = isFavorited
+        isFavorited = isFavorited,
+        origin = origin
     )
 
     override suspend fun toggleMessageFavorite(messageId: String, isFavorited: Boolean) {

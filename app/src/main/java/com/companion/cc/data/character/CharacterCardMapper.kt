@@ -37,6 +37,7 @@ object CharacterCardMapper {
                 tags = character.tags,
                 creator = character.creator,
                 characterVersion = character.characterVersion
+                ,rhythm = character.rhythm
             )
         )
     }
@@ -64,6 +65,7 @@ object CharacterCardMapper {
             systemPromptOverride = data.systemPrompt,
             postHistoryInstructions = data.postHistoryInstructions,
             characterBook = data.characterBook
+            ,rhythm = data.rhythm
         )
     }
 

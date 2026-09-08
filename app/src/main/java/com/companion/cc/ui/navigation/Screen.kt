@@ -19,6 +19,8 @@ sealed class Screen(val route: String) {
         fun createRoute(companionId: String) = "chat/${RouteArgumentCodec.encode(companionId)}"
     }
     // 自定义角色聊天 - 使用角色ID而不是companionId
+    object CharacterTestChat : Screen("character_test_chat")
+
     object CustomCharacterChat : Screen("custom_chat/{characterId}") {
         fun createRoute(characterId: String) =
             "custom_chat/${RouteArgumentCodec.encode(characterId)}"

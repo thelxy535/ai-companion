@@ -68,7 +68,8 @@ fun ImmersiveStatsScreen(
                 )
             )
         },
-        containerColor = androidx.compose.ui.graphics.Color.Transparent
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
+        contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
     ) { padding ->
         if (isLoading) {
             Box(

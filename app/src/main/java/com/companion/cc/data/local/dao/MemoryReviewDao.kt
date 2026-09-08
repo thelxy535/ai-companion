@@ -16,6 +16,26 @@ interface MemoryReviewDao {
     @Query("SELECT * FROM memory_reviews WHERE scopeKey = :scopeKey AND status IN ('pending', 'conflict') ORDER BY createdAt DESC")
     fun observePending(scopeKey: String): Flow<List<MemoryReviewEntity>>
 
+    @Query("SELECT COUNT(*) FROM memory_reviews WHERE scopeKey = :scopeKey AND status IN ('pending', 'conflict')")
+    suspend fun countPending(scopeKey: String): Int
+
+    @Query("SELECT * FROM memory_reviews WHERE scopeKey = :scopeKey AND status = 'deferred' ORDER BY createdAt DESC")
+    fun observeDeferred(scopeKey: String): Flow<List<MemoryReviewEntity>>
+
+    @Query(
+        "UPDATE memory_reviews SET status = 'pending', resolvedAt = NULL, " +
+            "resolutionNote = 'auto-restored after cooldown' " +
+            "WHERE scopeKey = :scopeKey AND status = 'deferred' AND createdAt <= :threshold"
+    )
+    suspend fun restoreDueDeferred(scopeKey: String, threshold: Long): Int
+
+    @Query(
+        "UPDATE memory_reviews SET status = 'pending', resolvedAt = NULL, " +
+            "resolutionNote = 'restored by user' " +
+            "WHERE scopeKey = :scopeKey AND id = :id AND status = 'deferred'"
+    )
+    suspend fun restoreById(scopeKey: String, id: String): Int
+
     @Query("DELETE FROM memory_reviews WHERE scopeKey = :scopeKey")
     suspend fun deleteByScope(scopeKey: String): Int
 

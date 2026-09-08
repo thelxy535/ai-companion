@@ -12,6 +12,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawOutline
 import android.net.Uri
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
@@ -124,7 +125,7 @@ fun AuroraChatTopBar(
         ) {
             Text(
                 title,
-                style = AuroraType.NavTitle.copy(fontSize = 16.sp),
+                style = AuroraType.NavTitle.copy(fontSize = (17f * com.companion.cc.ui.theme.LocalFontScale.current).sp),
                 fontWeight = FontWeight.SemiBold,
                 color = colors.ink,
                 maxLines = 1,
@@ -416,7 +417,19 @@ fun AuroraChatInputDock(
             BasicTextField(
                 value = message,
                 onValueChange = onMessageChange,
-                modifier = Modifier.weight(1f).onFocusChanged { focused = it.isFocused },
+                modifier = Modifier
+                    .weight(1f)
+                    .onFocusChanged { focused = it.isFocused }
+                    .clip(smoothCorner(22.dp))
+                    .background(if (night) Color(0x3D1E2842) else Color(0x5CFFFFFF), smoothCorner(22.dp))
+                    .drawBehind {
+                        // V9PM 输入框独立大 R：避免仅依赖 Dock 外框，输入区也与原型 20px 圆角一致
+                        drawOutline(
+                            smoothCorner(22.dp).createOutline(size, layoutDirection, this),
+                            if (focused) colors.accent.copy(alpha = 0.30f) else if (night) Color(0x29FFFFFF) else Color(0xCCFFFFFF),
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx())
+                        )
+                    },
                 textStyle = AuroraType.BodyChat.copy(color = colors.ink),
                 maxLines = 5,
                 decorationBox = { inner ->

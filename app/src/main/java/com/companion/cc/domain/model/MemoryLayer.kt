@@ -106,7 +106,7 @@ data class CompleteMemoryContext(
         // 长期记忆（重要知识）
         if (longTerm.isNotEmpty()) {
             parts.add("# 重要记忆")
-            longTerm.sortedByDescending { it.importance }.take(5).forEach { memory ->
+            longTerm.sortedByDescending { it.importance }.forEach { memory ->
                 parts.add("- ${memory.content}")
             }
             parts.add("")
@@ -124,7 +124,7 @@ data class CompleteMemoryContext(
         // 短期记忆（当前对话）
         if (shortTerm.isNotEmpty()) {
             parts.add("# 当前对话")
-            shortTerm.takeLast(10).forEach { memory ->
+            shortTerm.forEach { memory ->
                 val role = if (memory.message.role == MessageRole.USER) "用户" else "AI"
                 parts.add("$role: ${memory.message.content}")
             }

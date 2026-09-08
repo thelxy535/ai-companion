@@ -50,7 +50,10 @@ class HomeViewModelTest {
         whenever(messages.observeLatestMessage("user-real", "custom-1"))
             .thenReturn(flowOf(TestMessages.message("custom-1", timestamp = 20L)))
 
-        val vm = HomeViewModel(messages, users, onlineStatus, catalog)
+        val settings = mock<com.companion.cc.data.local.SettingsManager>()
+        whenever(settings.conversationReadAtFlow("user-real", "muse")).thenReturn(flowOf(0L))
+        whenever(settings.conversationReadAtFlow("user-real", "custom-1")).thenReturn(flowOf(0L))
+        val vm = HomeViewModel(messages, users, onlineStatus, catalog, settings)
 
         // uiState 使用 WhileSubscribed，需要有订阅者才会开始收集
         val job = vm.uiState.launchIn(this)
@@ -80,7 +83,10 @@ class HomeViewModelTest {
         whenever(messages.observeLatestMessage("user-real", "muse")).thenReturn(museMessages)
         whenever(messages.observeLatestMessage("user-real", "custom-1")).thenReturn(customMessages)
 
-        val vm = HomeViewModel(messages, users, onlineStatus, catalog)
+        val settings = mock<com.companion.cc.data.local.SettingsManager>()
+        whenever(settings.conversationReadAtFlow("user-real", "muse")).thenReturn(flowOf(0L))
+        whenever(settings.conversationReadAtFlow("user-real", "custom-1")).thenReturn(flowOf(0L))
+        val vm = HomeViewModel(messages, users, onlineStatus, catalog, settings)
         val job = vm.uiState.launchIn(this)
         advanceUntilIdle()
 

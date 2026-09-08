@@ -19,6 +19,10 @@ import com.companion.cc.ui.theme.TactileIntensityPreference
 import com.companion.cc.ui.theme.TactileIntensityPreferenceCodec
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import java.util.UUID
 import javax.inject.Inject
@@ -66,13 +70,31 @@ class SettingsManager @Inject constructor(
         val VISUAL_CUSTOMIZATION = stringPreferencesKey("visual_customization")
         val USER_AVATAR = stringPreferencesKey("user_avatar")  // 用户头像 URL
         val COMPANION_AVATAR_PREFIX = "companion_avatar_"  // AI 伴侣头像前缀
+        const val CONVERSATION_READ_AT_PREFIX = "conversation_read_at_"
     }
 
-    val userIdFlow: Flow<String> = context.dataStore.data.map { preferences ->
-        preferences[Keys.USER_ID] ?: generateUserId().also { id ->
-            saveUserId(id)
+    val userIdFlow: Flow<String> = flow {
+        emit(getOrCreateUserId())
+        emitAll(
+            context.dataStore.data
+                .map { preferences -> preferences[Keys.USER_ID] }
+                .filterNotNull()
+                .distinctUntilChanged()
+        )
+    }.distinctUntilChanged()
+
+    suspend fun getOrCreateUserId(): String {
+        var userId: String? = null
+        context.dataStore.edit { preferences ->
+            userId = preferences[Keys.USER_ID]
+            if (userId == null) {
+                userId = generateUserId()
+                preferences[Keys.USER_ID] = requireNotNull(userId)
+            }
         }
+        return requireNotNull(userId)
     }
+
 
     val apiKeyFlow: Flow<String?> = context.dataStore.data.map { preferences ->
         val encryptedKey = preferences[Keys.API_KEY]
@@ -319,9 +341,38 @@ class SettingsManager @Inject constructor(
     suspend fun loadEmotionSnapshot(scopeKey: String): String? =
         context.dataStore.data.map { it[stringPreferencesKey("emotion_$scopeKey")] }.first()
 
+    suspend fun saveInnerState(scopeKey: String, state: String) {
+        context.dataStore.edit { preferences ->
+            preferences[stringPreferencesKey("inner_state_$scopeKey")] = state
+        }
+    }
+
+    suspend fun loadInnerState(scopeKey: String): String? =
+        context.dataStore.data.map { it[stringPreferencesKey("inner_state_$scopeKey")] }.first()
+
+    suspend fun isNotificationEnabled(): Boolean =
+        context.dataStore.data.first()[Keys.NOTIFICATIONS_ENABLED] ?: true
+
     suspend fun saveNotificationsEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[Keys.NOTIFICATIONS_ENABLED] = enabled
+        }
+    }
+
+    /** Last timestamp the user opened a companion conversation. */
+    fun conversationReadAtFlow(userId: String, companionId: String): Flow<Long> {
+        val key = longPreferencesKey(
+            "${Keys.CONVERSATION_READ_AT_PREFIX}${userId}_${companionId}"
+        )
+        return context.dataStore.data.map { preferences -> preferences[key] ?: 0L }
+    }
+
+    suspend fun saveConversationReadAt(userId: String, companionId: String, timestamp: Long) {
+        val key = longPreferencesKey(
+            "${Keys.CONVERSATION_READ_AT_PREFIX}${userId}_${companionId}"
+        )
+        context.dataStore.edit { preferences ->
+            preferences[key] = timestamp
         }
     }
 
@@ -381,6 +432,13 @@ class SettingsManager @Inject constructor(
     /**
      * 保存 AI 伴侣头像
      */
+    /** V9PM：全部伴侣自定义头像（companionId -> url），供主页/列表统一解析 */
+    val companionAvatarOverridesFlow: Flow<Map<String, String>> = context.dataStore.data.map { preferences ->
+        preferences.asMap()
+            .entries.filter { it.key.name.startsWith(Keys.COMPANION_AVATAR_PREFIX) }
+            .associate { it.key.name.removePrefix(Keys.COMPANION_AVATAR_PREFIX) to (it.value as? String ?: "") }
+    }
+
     suspend fun saveCompanionAvatar(companionId: String, avatarUrl: String?) {
         val key = stringPreferencesKey("${Keys.COMPANION_AVATAR_PREFIX}$companionId")
         context.dataStore.edit { preferences ->

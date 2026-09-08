@@ -24,6 +24,8 @@ import com.companion.cc.ui.components.AdaptiveMetricGrid
 import com.companion.cc.ui.components.MetricGridItem
 import com.companion.cc.ui.components.SceneAction
 import com.companion.cc.ui.components.SceneActionTone
+import com.companion.cc.ui.components.V9PMActionButton
+import com.companion.cc.ui.components.V9PMDialogSurface
 import com.companion.cc.ui.components.SceneSection
 import com.companion.cc.ui.components.SceneSectionTone
 import com.companion.cc.ui.components.SceneTopBar
@@ -199,7 +201,8 @@ fun ImmersiveDataManagementScreen(
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        containerColor = Color.Transparent
+        containerColor = Color.Transparent,
+        contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
     ) { padding ->
         Column(
             modifier = Modifier
@@ -306,50 +309,29 @@ fun ImmersiveDataManagementScreen(
         }
 
         if (showCapsulePrivacyDialog) {
-            AlertDialog(
-                onDismissRequest = { showCapsulePrivacyDialog = false },
-                icon = { Icon(Icons.Default.Security, contentDescription = null) },
-                title = { Text("导出记忆胶囊") },
-                text = {
+            V9PMDialogSurface(onDismissRequest = { showCapsulePrivacyDialog = false }) {
+                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("导出记忆胶囊", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
                     Text("记忆胶囊包含当前角色作用域的结构化记忆、证据和检索记录。请只保存到你信任的位置，不要分享给他人。")
-                },
-                confirmButton = {
-                    TextButton(onClick = confirmCapsuleExport) { Text("继续导出") }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showCapsulePrivacyDialog = false }) { Text("取消") }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        V9PMActionButton(label = "取消", onClick = { showCapsulePrivacyDialog = false }, modifier = Modifier.weight(1f), height = 40.dp)
+                        V9PMActionButton(label = "继续导出", onClick = confirmCapsuleExport, modifier = Modifier.weight(1f), height = 40.dp)
+                    }
                 }
-            )
+            }
         }
 
         if (showClearDialog) {
-            AlertDialog(
-                onDismissRequest = { showClearDialog = false },
-                icon = {
-                    Icon(
-                        imageVector = Icons.Default.Warning,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.error
-                    )
-                },
-                title = { Text("确认清除") },
-                text = { Text("确定要清除所有对话记录吗？此操作不可撤销！") },
-                confirmButton = {
-                    TextButton(
-                        onClick = confirmClearMessages,
-                        colors = ButtonDefaults.textButtonColors(
-                            contentColor = MaterialTheme.colorScheme.error
-                        )
-                    ) {
-                        Text("清除")
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showClearDialog = false }) {
-                        Text("取消")
+            V9PMDialogSurface(onDismissRequest = { showClearDialog = false }) {
+                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("确认清除", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.error)
+                    Text("确定要清除所有对话记录吗？此操作不可撤销！")
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        V9PMActionButton(label = "取消", onClick = { showClearDialog = false }, modifier = Modifier.weight(1f), height = 40.dp)
+                        V9PMActionButton(label = "清除", onClick = confirmClearMessages, modifier = Modifier.weight(1f), height = 40.dp, destructive = true)
                     }
                 }
-            )
+            }
         }
 
         if (isProcessing) {
@@ -359,12 +341,9 @@ fun ImmersiveDataManagementScreen(
                     .background(visualTheme.tokens.glass.scrim),
                 contentAlignment = Alignment.Center
             ) {
-                Surface(
-                    shape = MaterialTheme.shapes.medium,
-                    tonalElevation = 2.dp
-                ) {
+                V9PMDialogSurface(onDismissRequest = {}) {
                     Column(
-                        modifier = Modifier.padding(32.dp),
+                        modifier = Modifier.padding(28.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {

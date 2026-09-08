@@ -17,6 +17,12 @@ interface MemorySourceDao {
     @Query("SELECT * FROM memory_sources WHERE scopeKey = :scopeKey ORDER BY occurredAt ASC, id ASC")
     suspend fun findAllInScope(scopeKey: String): List<MemorySourceEntity>
 
+    @Query("SELECT * FROM memory_sources WHERE scopeKey LIKE :scopePrefix ORDER BY occurredAt ASC, id ASC")
+    suspend fun findAllInScopePrefix(scopePrefix: String): List<MemorySourceEntity>
+
+    @Query("SELECT * FROM memory_sources WHERE scopeKey = :scopeKey AND occurredAt <= :occurredAt ORDER BY occurredAt DESC, id DESC LIMIT :limit")
+    suspend fun findRecentBefore(scopeKey: String, occurredAt: Long, limit: Int): List<MemorySourceEntity>
+
     @Query("SELECT * FROM memory_sources WHERE scopeKey = :scopeKey AND id = :id LIMIT 1")
     suspend fun findByIdForScope(scopeKey: String, id: String): MemorySourceEntity?
 

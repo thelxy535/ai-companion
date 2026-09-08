@@ -61,7 +61,7 @@ class MemoryLayerManager @Inject constructor(
         userId: String,
         companionId: String
     ): List<MemoryLayered.ShortTerm> {
-        val messages = messageRepository.getMessages(
+        val messages = messageRepository.getLatestMessages(
             userId = userId,
             companionId = companionId,
             limit = config.shortTermCapacity

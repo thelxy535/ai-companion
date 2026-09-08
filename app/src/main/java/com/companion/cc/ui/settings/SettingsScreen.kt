@@ -12,10 +12,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -24,6 +24,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.companion.cc.domain.model.BackdropTarget
 import com.companion.cc.ui.components.UtilityDivider
 import com.companion.cc.ui.components.UtilitySection
+import com.companion.cc.ui.components.V9PMActionButton
+import com.companion.cc.ui.components.V9PMSwitch
 import com.companion.cc.util.NotificationHelper
 import com.companion.cc.util.NotificationPermissionPolicy
 import androidx.compose.foundation.background
@@ -41,6 +43,9 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -49,31 +54,30 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
-    onNavigateBack: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
-    val apiKey by viewModel.apiKey.collectAsState()
-    val notificationsOn by viewModel.notificationsEnabled.collectAsState(initial = true)
-    val baseUrl by viewModel.baseUrl.collectAsState()
-    val model by viewModel.model.collectAsState()
-    val availableModels by viewModel.availableModels.collectAsState()
-    val currentProvider by viewModel.currentProvider.collectAsState()
-    val isValidating by viewModel.isValidating.collectAsState()
-    val validationMessage by viewModel.validationMessage.collectAsState()
-    val visionApiKeySaved by viewModel.visionApiKeySaved.collectAsState()
-    val visionServiceMode by viewModel.visionServiceMode.collectAsState()
-    val isSelfHostedVisionPaired by viewModel.isSelfHostedVisionPaired.collectAsState()
-    val isPairingSelfHostedVision by viewModel.isPairingSelfHostedVision.collectAsState()
-    val selfHostedVisionMessage by viewModel.selfHostedVisionMessage.collectAsState()
-    val themeMode by viewModel.themeMode.collectAsState()
-    val materialStyle by viewModel.materialStyle.collectAsState()
-    val fontSize by viewModel.fontSize.collectAsState()
-    val tactileIntensity by viewModel.tactileIntensity.collectAsState()
-    val visualCustomization by viewModel.visualCustomization.collectAsState()
-    val visualCustomizationMessage by viewModel.visualCustomizationMessage.collectAsState()
-    val userAvatar by viewModel.userAvatar.collectAsState()
-    val xiaoChanAvatar by viewModel.xiaoChanAvatar.collectAsState()
-    val museAvatar by viewModel.museAvatar.collectAsState()
+    val apiKey by viewModel.apiKey.collectAsStateWithLifecycle()
+    val notificationsOn by viewModel.notificationsEnabled.collectAsStateWithLifecycle(initialValue = true)
+    val baseUrl by viewModel.baseUrl.collectAsStateWithLifecycle()
+    val model by viewModel.model.collectAsStateWithLifecycle()
+    val availableModels by viewModel.availableModels.collectAsStateWithLifecycle()
+    val currentProvider by viewModel.currentProvider.collectAsStateWithLifecycle()
+    val isValidating by viewModel.isValidating.collectAsStateWithLifecycle()
+    val validationMessage by viewModel.validationMessage.collectAsStateWithLifecycle()
+    val visionApiKeySaved by viewModel.visionApiKeySaved.collectAsStateWithLifecycle()
+    val visionServiceMode by viewModel.visionServiceMode.collectAsStateWithLifecycle()
+    val isSelfHostedVisionPaired by viewModel.isSelfHostedVisionPaired.collectAsStateWithLifecycle()
+    val isPairingSelfHostedVision by viewModel.isPairingSelfHostedVision.collectAsStateWithLifecycle()
+    val selfHostedVisionMessage by viewModel.selfHostedVisionMessage.collectAsStateWithLifecycle()
+    val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
+    val materialStyle by viewModel.materialStyle.collectAsStateWithLifecycle()
+    val fontSize by viewModel.fontSize.collectAsStateWithLifecycle()
+    val tactileIntensity by viewModel.tactileIntensity.collectAsStateWithLifecycle()
+    val visualCustomization by viewModel.visualCustomization.collectAsStateWithLifecycle()
+    val visualCustomizationMessage by viewModel.visualCustomizationMessage.collectAsStateWithLifecycle()
+    val userAvatar by viewModel.userAvatar.collectAsStateWithLifecycle()
+    val xiaoChanAvatar by viewModel.xiaoChanAvatar.collectAsStateWithLifecycle()
+    val museAvatar by viewModel.museAvatar.collectAsStateWithLifecycle()
     val context = androidx.compose.ui.platform.LocalContext.current
     // V9PM：触感通路（色点反馈/Switch 拨动共用）
     val tactilePref = com.companion.cc.ui.theme.LocalTactileIntensityPreference.current
@@ -109,7 +113,10 @@ fun SettingsScreen(
 
     Scaffold(
         modifier = Modifier.auroraScreenBackground(LocalVisualTheme.current.tokens.backdrop.isDark),
-        containerColor = Color.Transparent
+        containerColor = Color.Transparent,
+        // V9PM 根因修复：Transparent 容器使 contentColorFor 返回 Unspecified——未显式给色的 Text 全部渲染成黑。
+        // 显式提供 onSurface 后，全屏继承文字随明暗主题。
+        contentColor = MaterialTheme.colorScheme.onSurface
     ) { padding ->
         // 单开手风琴：点行展开对应功能区
         var expandedSection by remember { mutableStateOf<String?>(null) }
@@ -151,7 +158,14 @@ fun SettingsScreen(
                         night = night,
                         onClick = { expandedSection = if (expandedSection == "api") null else "api" }
                     )
-                    if (expandedSection == "api") {
+                    androidx.compose.animation.AnimatedVisibility(
+                    visible = expandedSection == "api",
+                    enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(220, easing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f))) +
+                        androidx.compose.animation.expandVertically(androidx.compose.animation.core.tween(280, easing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f))),
+                    exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(120)) +
+                        androidx.compose.animation.shrinkVertically(androidx.compose.animation.core.tween(200, easing = androidx.compose.animation.core.CubicBezierEasing(0.3f, 0f, 0.8f, 0.15f)))
+                ) {
+                    Column {
                         ProviderStatusSection(
                             provider = currentProvider,
                             modelCount = availableModels.size,
@@ -168,6 +182,7 @@ fun SettingsScreen(
                         )
                         AdvancedSettingsSection(baseUrlInput) { baseUrlInput = it }
                     }
+                }
                     V7SRow(
                         title = "模型",
                         subtitle = model?.takeIf { it.isNotBlank() } ?: "验证 Key 后自动获取",
@@ -175,7 +190,13 @@ fun SettingsScreen(
                         night = night,
                         onClick = { expandedSection = if (expandedSection == "model") null else "model" }
                     )
-                    if (expandedSection == "model" && availableModels.isNotEmpty()) {
+                    androidx.compose.animation.AnimatedVisibility(
+                    visible = expandedSection == "model" && availableModels.isNotEmpty(),
+                    enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(220, easing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f))) +
+                        androidx.compose.animation.expandVertically(androidx.compose.animation.core.tween(280, easing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f))),
+                    exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(120)) +
+                        androidx.compose.animation.shrinkVertically(androidx.compose.animation.core.tween(200, easing = androidx.compose.animation.core.CubicBezierEasing(0.3f, 0f, 0.8f, 0.15f)))
+                ) {
                         ModelSelectionSection(
                             selectedModel = model,
                             availableModels = availableModels,
@@ -188,9 +209,16 @@ fun SettingsScreen(
                         subtitle = if (isSelfHostedVisionPaired) "自托管 · 已配对" else if (visionApiKeySaved) "云端 · 已配置" else "未配置",
                         expanded = expandedSection == "vision",
                         night = night,
-                        onClick = { expandedSection = if (expandedSection == "vision") null else "vision" }
+                        onClick = { expandedSection = if (expandedSection == "vision") null else "vision" },
+                    showDivider = false,
                     )
-                    if (expandedSection == "vision") {
+                    androidx.compose.animation.AnimatedVisibility(
+                    visible = expandedSection == "vision",
+                    enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(220, easing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f))) +
+                        androidx.compose.animation.expandVertically(androidx.compose.animation.core.tween(280, easing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f))),
+                    exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(120)) +
+                        androidx.compose.animation.shrinkVertically(androidx.compose.animation.core.tween(200, easing = androidx.compose.animation.core.CubicBezierEasing(0.3f, 0f, 0.8f, 0.15f)))
+                ) {
                         VisionApiConfigSection(
                             mode = visionServiceMode,
                             isSelfHostedPaired = isSelfHostedVisionPaired,
@@ -227,10 +255,19 @@ fun SettingsScreen(
                         night = night,
                         onClick = { expandedSection = if (expandedSection == "material") null else "material" }
                     )
-                    if (expandedSection == "material") {
+                    androidx.compose.animation.AnimatedVisibility(
+                    visible = expandedSection == "material",
+                    enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(220, easing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f))) +
+                        androidx.compose.animation.expandVertically(androidx.compose.animation.core.tween(280, easing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f))),
+                    exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(120)) +
+                        androidx.compose.animation.shrinkVertically(androidx.compose.animation.core.tween(200, easing = androidx.compose.animation.core.CubicBezierEasing(0.3f, 0f, 0.8f, 0.15f)))
+                ) {
+                    Column {
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)
+                            modifier = Modifier
+                                .horizontalScroll(rememberScrollState())
+                                .padding(horizontal = 14.dp, vertical = 4.dp)
                         ) {
                             listOf("GLASS", "MATTE", "LIQUID", "FABRIC", "SANDBLASTED").forEach { style ->
                                 val label = when (style) {
@@ -241,15 +278,13 @@ fun SettingsScreen(
                                     else -> "磨砂"
                                 }
                                 val selected = materialStyle == style
-                                OutlinedButton(
+                                V9PMActionButton(
+                                    label = label,
                                     onClick = { viewModel.saveMaterialStyle(style) },
-                                    colors = ButtonDefaults.outlinedButtonColors(
-                                        containerColor = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f) else Color.Transparent
-                                    ),
-                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                                ) {
-                                    Text(label, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
-                                }
+                                    selected = selected,
+                                    modifier = Modifier.widthIn(min = 92.dp),
+                                    height = 40.dp
+                                )
                             }
                         }
                         Text(
@@ -259,6 +294,7 @@ fun SettingsScreen(
                             modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)
                         )
                     }
+                }
                     V7SRow(
                         title = "强调色",
                         subtitle = "主题强调色（按钮/选中态/链接）",
@@ -266,11 +302,19 @@ fun SettingsScreen(
                         night = night,
                         onClick = { expandedSection = if (expandedSection == "accent") null else "accent" }
                     )
-                    if (expandedSection == "accent") {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(16.dp),
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
-                        ) {
+                    androidx.compose.animation.AnimatedVisibility(
+                    visible = expandedSection == "accent",
+                    enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(220, easing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f))) +
+                        androidx.compose.animation.expandVertically(androidx.compose.animation.core.tween(280, easing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f))),
+                    exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(120)) +
+                        androidx.compose.animation.shrinkVertically(androidx.compose.animation.core.tween(200, easing = androidx.compose.animation.core.CubicBezierEasing(0.3f, 0f, 0.8f, 0.15f)))
+                ) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                modifier = Modifier
+                                    .horizontalScroll(rememberScrollState())
+                                    .padding(horizontal = 14.dp, vertical = 10.dp)
+                            ) {
                             val accentChoices = listOf(
                                 "默认蓝" to null,
                                 "绿" to "#2EA985",
@@ -325,7 +369,13 @@ fun SettingsScreen(
                         night = night,
                         onClick = { expandedSection = if (expandedSection == "font") null else "font" }
                     )
-                    if (expandedSection == "font") {
+                    androidx.compose.animation.AnimatedVisibility(
+                    visible = expandedSection == "font",
+                    enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(220, easing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f))) +
+                        androidx.compose.animation.expandVertically(androidx.compose.animation.core.tween(280, easing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f))),
+                    exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(120)) +
+                        androidx.compose.animation.shrinkVertically(androidx.compose.animation.core.tween(200, easing = androidx.compose.animation.core.CubicBezierEasing(0.3f, 0f, 0.8f, 0.15f)))
+                ) {
                         Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
                             listOf(
                                 "小" to "small",
@@ -363,9 +413,16 @@ fun SettingsScreen(
                         },
                         expanded = expandedSection == "tactile",
                         night = night,
-                        onClick = { expandedSection = if (expandedSection == "tactile") null else "tactile" }
+                        onClick = { expandedSection = if (expandedSection == "tactile") null else "tactile" },
+                    showDivider = false,
                     )
-                    if (expandedSection == "tactile") {
+                    androidx.compose.animation.AnimatedVisibility(
+                    visible = expandedSection == "tactile",
+                    enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(220, easing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f))) +
+                        androidx.compose.animation.expandVertically(androidx.compose.animation.core.tween(280, easing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f))),
+                    exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(120)) +
+                        androidx.compose.animation.shrinkVertically(androidx.compose.animation.core.tween(200, easing = androidx.compose.animation.core.CubicBezierEasing(0.3f, 0f, 0.8f, 0.15f)))
+                ) {
                         Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
                             listOf(
                                 "跟随系统" to com.companion.cc.ui.theme.TactileIntensityPreference.SYSTEM,
@@ -408,13 +465,22 @@ fun SettingsScreen(
                         night = night,
                         onClick = { expandedSection = if (expandedSection == "avatar") null else "avatar" }
                     )
-                    if (expandedSection == "avatar") {
+                    androidx.compose.animation.AnimatedVisibility(
+                    visible = expandedSection == "avatar",
+                    enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(220, easing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f))) +
+                        androidx.compose.animation.expandVertically(androidx.compose.animation.core.tween(280, easing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f))),
+                    exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(120)) +
+                        androidx.compose.animation.shrinkVertically(androidx.compose.animation.core.tween(200, easing = androidx.compose.animation.core.CubicBezierEasing(0.3f, 0f, 0.8f, 0.15f)))
+                ) {
+                    // 修复：顶层 AnimatedVisibility 内部是 Box——多个子项会全部叠放，必须包 Column
+                    Column {
                         AvatarSettingItem("我的头像", userAvatar, onClick = { avatarDialog = AvatarTarget.USER })
                         UtilityDivider()
                         AvatarSettingItem("小璨的头像", xiaoChanAvatar, "💗") { avatarDialog = AvatarTarget.XIAO_CHAN }
                         UtilityDivider()
                         AvatarSettingItem("缪斯的头像", museAvatar, "🦌") { avatarDialog = AvatarTarget.MUSE }
                     }
+                }
                     // 通知行（设计稿带 Switch；授权失败/未授权时点 Switch 触发系统授权）
                     Row(
                         modifier = Modifier
@@ -446,16 +512,16 @@ fun SettingsScreen(
                             )
                         }
                         Spacer(Modifier.width(12.dp))
-                        Switch(
+                        V9PMSwitch(
                             checked = notificationsOn,
                             onCheckedChange = { want ->
-                                // V9PM 修复5：拨动触感
                                 tactile.perform(com.companion.cc.ui.theme.TactileGesture.CLICK, tactilePref, effectTier)
                                 viewModel.saveNotificationsEnabled(want)
                                 if (want && !notificationPermissionGranted) {
                                     notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                                 }
-                            }
+                            },
+                            enabled = true
                         )
                     }
                 }
@@ -496,20 +562,6 @@ fun SettingsScreen(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun SettingsTopBar(onNavigateBack: () -> Unit) {
-    TopAppBar(
-        title = { Text("设置", fontWeight = FontWeight.Bold) },
-        navigationIcon = {
-            IconButton(onClick = onNavigateBack) {
-                Icon(Icons.Default.ArrowBack, contentDescription = "返回")
-            }
-        },
-        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
-    )
-}
-
 @Composable
 private fun NotificationPermissionSection(
     onRequestPermission: () -> Unit
@@ -528,9 +580,13 @@ private fun NotificationPermissionSection(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(Modifier.height(12.dp))
-        Button(onClick = onRequestPermission) {
-            Text("允许通知")
-        }
+        V9PMActionButton(
+            label = "允许通知",
+            icon = Icons.Default.Notifications,
+            onClick = onRequestPermission,
+            modifier = Modifier.fillMaxWidth(),
+            height = 40.dp
+        )
     }
 }
 
@@ -591,8 +647,10 @@ private fun V7SRow(
     showDivider: Boolean = true,
     onClick: () -> Unit
 ) {
-    val ink = MaterialTheme.colorScheme.onSurface
-    val inkFaint = MaterialTheme.colorScheme.onSurfaceVariant
+    // V9PM：文字色直连 VisualTheme tokens（明暗切换即时跟随，不受 MaterialTheme 嵌套覆盖影响）
+    val vTokens = com.companion.cc.ui.theme.LocalVisualTheme.current.tokens
+    val ink = vTokens.contentPrimary
+    val inkFaint = vTokens.contentSecondary
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
@@ -605,9 +663,9 @@ private fun V7SRow(
             Column(Modifier.weight(1f)) {
                 // V9PM 字体覆盖：硬编码 sp × LocalFontScale
                 val fontScale = com.companion.cc.ui.theme.LocalFontScale.current
-                Text(title, fontSize = (14.5f * fontScale).sp, fontWeight = FontWeight.Medium, lineHeight = (19f * fontScale).sp, color = ink)
+                Text(title, fontSize = (16f * fontScale).sp, fontWeight = FontWeight.Medium, lineHeight = (21f * fontScale).sp, color = ink)
                 Spacer(Modifier.height(2.dp))
-                Text(subtitle, fontSize = (11.5f * fontScale).sp, color = inkFaint)
+                Text(subtitle, fontSize = (12f * fontScale).sp, color = inkFaint)
             }
             if (showChevron) {
                 Spacer(Modifier.width(12.dp))

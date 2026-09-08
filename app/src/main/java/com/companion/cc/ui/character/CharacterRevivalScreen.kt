@@ -1,8 +1,11 @@
 package com.companion.cc.ui.character
 
 import com.companion.cc.ui.designsystem.auroraScreenBackground
+import com.companion.cc.ui.components.V9PMActionButton
+import com.companion.cc.ui.components.V9PMChoiceRow
+import com.companion.cc.ui.components.V9PMTextField
+import com.companion.cc.ui.components.V9PMTopBar
 import com.companion.cc.ui.theme.LocalVisualTheme
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,20 +14,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -58,18 +54,14 @@ fun CharacterRevivalScreen(
     Scaffold(
         modifier = Modifier.auroraScreenBackground(LocalVisualTheme.current.tokens.backdrop.isDark),
         topBar = {
-            TopAppBar(
-                modifier = Modifier.padding(top = 44.dp),
+            V9PMTopBar(
                 title = { Text("恢复角色") },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "返回")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                onNavigateBack = onNavigateBack,
+                modifier = Modifier.padding(top = 44.dp)
             )
         },
-        containerColor = Color.Transparent
+        containerColor = Color.Transparent,
+        contentColor = MaterialTheme.colorScheme.onSurface
     ) { padding ->
         Column(
             modifier = Modifier
@@ -88,13 +80,12 @@ fun CharacterRevivalScreen(
                 )
             }
 
-            OutlinedTextField(
+            V9PMTextField(
                 value = token,
                 onValueChange = { token = it },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("恢复令牌") },
-                supportingText = { Text("令牌会在提交前自动去除首尾空格") },
-                singleLine = true,
+                label = "恢复令牌",
+                supportingText = "令牌会在提交前自动去除首尾空格",
                 enabled = !isReviving
             )
 
@@ -134,7 +125,7 @@ fun CharacterRevivalScreen(
                         color = MaterialTheme.colorScheme.primary,
                         style = MaterialTheme.typography.titleMedium
                     )
-                    Button(onClick = onNavigateBack) { Text("返回角色列表") }
+                    V9PMActionButton(label = "返回角色列表", onClick = onNavigateBack, modifier = Modifier.fillMaxWidth(), height = 44.dp)
                 }
                 is CharacterRevivalState.Failure -> Text(
                     current.message,
@@ -143,13 +134,12 @@ fun CharacterRevivalScreen(
                 CharacterRevivalState.Idle -> Unit
             }
 
-            Button(
+            V9PMActionButton(
+                label = "开始恢复",
                 onClick = startRevival,
                 enabled = token.isNotBlank() && !isReviving,
                 modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("开始恢复")
-            }
+            )
         }
     }
 }
@@ -161,25 +151,14 @@ private fun RevivalModeRow(
     description: String,
     onClick: () -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        RadioButton(selected = selected, onClick = onClick)
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            Text(title, style = MaterialTheme.typography.titleSmall)
-            Text(
-                description,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+    V9PMChoiceRow(
+        title = title,
+        subtitle = description,
+        selected = selected,
+        onClick = onClick,
+        modifier = Modifier.padding(vertical = 2.dp),
+        trailing = {
+            RadioButton(selected = selected, onClick = null)
         }
-    }
+    )
 }

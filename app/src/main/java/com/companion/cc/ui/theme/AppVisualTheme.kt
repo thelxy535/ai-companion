@@ -90,6 +90,10 @@ fun AppVisualTheme(
             val window = (view.context as Activity).window
             window.statusBarColor = android.graphics.Color.TRANSPARENT
             window.navigationBarColor = android.graphics.Color.TRANSPARENT
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                window.isNavigationBarContrastEnforced = false
+                window.navigationBarDividerColor = android.graphics.Color.TRANSPARENT
+            }
             WindowCompat.setDecorFitsSystemWindows(window, false)
             WindowCompat.getInsetsController(window, view).apply {
                 isAppearanceLightStatusBars = !darkTheme
@@ -119,9 +123,16 @@ fun AppVisualTheme(
                 onSurface = animatedOnSurface,
                 onSurfaceVariant = animatedOnSurfaceVariant,
             ),
-            typography = createTypography(fontSize),
-            content = content
-        )
+            typography = createTypography(fontSize)
+        ) {
+            // V9PM 根因修复：未显式给色的 Text 退回 LocalContentColor（默认黑），
+            // 在根级绑定主题 onSurface，使默认文字跟随日夜主题（含 Dialog/Popup）。
+            CompositionLocalProvider(
+                androidx.compose.material3.LocalContentColor provides animatedOnSurface
+            ) {
+                content()
+            }
+        }
     }
 }
 

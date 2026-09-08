@@ -5,6 +5,8 @@ import com.companion.cc.data.local.SettingsManager
 import com.companion.cc.data.local.dao.DateCountRow
 import com.companion.cc.data.local.dao.StatsDao
 import com.companion.cc.data.local.entity.MessageEntity
+import com.companion.cc.domain.memory.MemoryGraphRepository
+import com.companion.cc.domain.memory.GraphSnapshot
 import com.companion.cc.domain.identity.CurrentUserProvider
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -26,12 +28,13 @@ class MemoryTreeViewModelTest {
         val statsDao = mock<StatsDao>()
         val settings = mock<SettingsManager>()
         val users = mock<CurrentUserProvider>()
+        val graph = mock<MemoryGraphRepository>()
         whenever(users.requireUserId()).thenReturn("user-1")
         whenever(statsDao.getTotalMessagesForCompanion("user-1", "companion-1")).thenReturn(1)
         whenever(statsDao.getTotalDaysForCompanion("user-1", "companion-1")).thenReturn(1)
         whenever(statsDao.getMessageCountByDateForCompanion("user-1", "companion-1"))
             .thenReturn(listOf(DateCountRow("2026-08-26", 1)))
-        whenever(statsDao.getMessagesByDateForCompanion("user-1", "companion-1", "2026-08-26"))
+        whenever(statsDao.getMessagesForCompanion("user-1", "companion-1"))
             .thenReturn(
                 listOf(
                     MessageEntity(
@@ -40,13 +43,14 @@ class MemoryTreeViewModelTest {
                         companionId = "companion-1",
                         role = "user",
                         content = "收藏的消息",
-                        timestamp = 1L,
+                        timestamp = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
+                            .parse("2026-08-26 12:00:00")!!.time,
                         isFavorited = true
                     )
                 )
             )
 
-        val viewModel = MemoryTreeViewModel(statsDao, settings, users)
+        val viewModel = MemoryTreeViewModel(statsDao, settings, users, graph)
         viewModel.loadMessages("companion-1")
         advanceUntilIdle()
 
@@ -58,21 +62,22 @@ class MemoryTreeViewModelTest {
         val statsDao = mock<StatsDao>()
         val settings = mock<SettingsManager>()
         val users = mock<CurrentUserProvider>()
+        val graph = mock<MemoryGraphRepository>()
         whenever(users.requireUserId()).thenReturn("user-1")
         whenever(statsDao.getTotalMessagesForCompanion("user-1", "companion-1")).thenReturn(1)
         whenever(statsDao.getTotalDaysForCompanion("user-1", "companion-1")).thenReturn(1)
         whenever(statsDao.getMessageCountByDateForCompanion("user-1", "companion-1"))
             .thenReturn(listOf(DateCountRow("2026-08-26", 1)))
-        whenever(statsDao.getMessagesByDateForCompanion("user-1", "companion-1", "2026-08-26"))
+        whenever(statsDao.getMessagesForCompanion("user-1", "companion-1"))
             .thenReturn(emptyList())
 
-        val viewModel = MemoryTreeViewModel(statsDao, settings, users)
+        val viewModel = MemoryTreeViewModel(statsDao, settings, users, graph)
         viewModel.loadMessages("companion-1")
         advanceUntilIdle()
 
         verify(statsDao).getTotalMessagesForCompanion("user-1", "companion-1")
         verify(statsDao).getTotalDaysForCompanion("user-1", "companion-1")
         verify(statsDao).getMessageCountByDateForCompanion("user-1", "companion-1")
-        verify(statsDao).getMessagesByDateForCompanion("user-1", "companion-1", "2026-08-26")
+        assertTrue(viewModel.messagesByDate.value.isEmpty())
     }
 }

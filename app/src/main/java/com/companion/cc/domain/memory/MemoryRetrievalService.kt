@@ -54,8 +54,18 @@ class MemoryRetrievalService(
         RetrievalResult(traceId, ranked)
     }
 
+    /** 当前生效的关系自我叙事（自我叙事注入 Prompt 用，不参与相关性排序）。 */
+    suspend fun relationshipNarratives(scopeKey: String, limit: Int = 3): List<MemoryNodeEntity> =
+        withContext(Dispatchers.IO) {
+            repository.getActiveNodesByKind(
+                scopeKey,
+                NarrativeKinds.RELATIONSHIP,
+                limit,
+                now()
+            )
+        }
+
     companion object {
-        private const val DAY_MILLIS = 86_400_000L
         private const val RECENCY_WEIGHT = 0.5
         private const val POSITIVE_FEEDBACK_WEIGHT = 0.25
         private const val NEGATIVE_FEEDBACK_WEIGHT = 1.0
@@ -76,8 +86,7 @@ class MemoryRetrievalService(
             }.map { node ->
                 val titleMatch = if (normalized.isNotEmpty() && node.title.lowercase().contains(normalized)) 2.0 else 0.0
                 val contentMatch = if (normalized.isNotEmpty() && node.content.lowercase().contains(normalized)) 1.0 else 0.0
-                val ageMs = (now - node.updatedAt).coerceAtLeast(0L)
-                val recency = 1.0 / (1.0 + ageMs.toDouble() / DAY_MILLIS)
+                val recency = TemporalMemoryPolicy.weight(node.updatedAt, now)
                 val nodeFeedback = feedback[node.id] ?: RetrievalFeedbackSummary()
                 val feedbackAdjustment =
                     nodeFeedback.positiveCount * POSITIVE_FEEDBACK_WEIGHT -
@@ -88,7 +97,7 @@ class MemoryRetrievalService(
                     node,
                     score,
                     "title=$titleMatch content=$contentMatch importance=${node.importance} " +
-                        "confidence=${node.confidence} recency=$recency " +
+                        "confidence=${node.confidence} temporal=${TemporalMemoryPolicy.label(node.updatedAt, now)} recency=$recency " +
                         "positive=${nodeFeedback.positiveCount} negative=${nodeFeedback.negativeCount}"
                 )
             }.sortedWith(

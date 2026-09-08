@@ -26,6 +26,8 @@ import com.companion.cc.domain.model.Mood
 import com.companion.cc.ui.theme.LocalVisualTheme
 import java.text.SimpleDateFormat
 import java.util.*
+import com.companion.cc.ui.components.V9PMDialogSurface
+import com.companion.cc.ui.components.V9PMIconButton
 
 /**
  * 情感历史时间线对话框
@@ -37,16 +39,10 @@ fun EmotionalTimelineDialog(
     onDismiss: () -> Unit
 ) {
     val chart = LocalVisualTheme.current.tokens.chart
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.large,
-            tonalElevation = 3.dp
-        ) {
+    V9PMDialogSurface(onDismissRequest = onDismiss, modifier = Modifier.fillMaxWidth()) {
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(24.dp)
+                modifier = Modifier.fillMaxWidth().padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 // 标题
                 Row(
@@ -67,9 +63,7 @@ fun EmotionalTimelineDialog(
                             fontWeight = FontWeight.Bold
                         )
                     }
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "关闭")
-                    }
+                    V9PMIconButton(Icons.Default.Close, "关闭", onDismiss, size = 42.dp, iconSize = 18.dp)
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
@@ -125,7 +119,6 @@ fun EmotionalTimelineDialog(
                 }
             }
         }
-    }
 }
 
 @Composable

@@ -19,6 +19,15 @@ data class CustomCharacterEntity(
     val exampleDialogues: String,      // JSON: List<ExampleDialogue>
     val voiceConfig: String?,          // JSON: VoiceConfig
     val behaviorRules: String?,        // JSON: BehaviorRules
+    val scenario: String = "",
+    val alternateGreetings: String = "[]", // JSON: List<String>
+    val creatorNotes: String = "",
+    val creator: String = "",
+    val characterVersion: String = "1.0",
+    val tags: String = "[]",           // JSON: List<String>
+    val systemPromptOverride: String = "",
+    val postHistoryInstructions: String = "",
+    val characterBook: String = "[]", // JSON: List<CharacterBookEntry>
     val isCustom: Boolean = true,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()

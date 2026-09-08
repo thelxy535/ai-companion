@@ -16,6 +16,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import com.companion.cc.ui.designsystem.AuroraChatTokens
 import com.companion.cc.ui.designsystem.AuroraDuration
@@ -55,15 +56,25 @@ fun rememberStreamingText(
     fullText: String,
     isStreaming: Boolean = true,
     streamingSpeed: Long = AuroraDuration.TypeRevealChar.toLong(),
+    streamKey: String = "default",
 ): String {
-    var state by remember { mutableStateOf(StreamingRevealState()) }
+    var state by remember(streamKey) { mutableStateOf(StreamingRevealState()) }
+    val latestText by rememberUpdatedState(fullText)
+    val latestStreaming by rememberUpdatedState(isStreaming)
 
-    LaunchedEffect(fullText, isStreaming) {
-        state = reconcileStreamingTarget(state, fullText, isStreaming)
-        if (isStreaming && fullText.length <= AuroraChatTokens.RevealMaxAnimatedChars) {
-            while (state.displayed.length < state.target.length) {
+    LaunchedEffect(streamKey, streamingSpeed) {
+        while (true) {
+            val target = latestText
+            val streaming = latestStreaming
+            state = reconcileStreamingTarget(state, target, streaming)
+            if (!streaming || target.length > AuroraChatTokens.RevealMaxAnimatedChars) {
+                return@LaunchedEffect
+            }
+            if (state.displayed.length < state.target.length) {
                 delay(streamingSpeed)
                 state = revealNextCharacter(state)
+            } else {
+                withFrameNanos { }
             }
         }
     }

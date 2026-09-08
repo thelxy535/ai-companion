@@ -36,6 +36,7 @@ import com.companion.cc.data.local.entity.MemoryRelationEntity
 import com.companion.cc.data.local.entity.MemoryRetrievalTraceEntity
 import com.companion.cc.data.local.entity.MemoryRetrievalFeedbackEntity
 import com.companion.cc.data.local.entity.MemoryScopeQuarantineEntity
+import com.companion.cc.data.local.entity.ReflectionJobEntity
 import com.companion.cc.domain.usecase.MoodStateDao
 import com.companion.cc.domain.usecase.MoodStateEntity
 
@@ -62,9 +63,10 @@ import com.companion.cc.domain.usecase.MoodStateEntity
         MemoryRelationEntity::class,
         MemoryRetrievalTraceEntity::class,
         MemoryRetrievalFeedbackEntity::class,
-        MemoryScopeQuarantineEntity::class
+        MemoryScopeQuarantineEntity::class,
+        ReflectionJobEntity::class
     ],
-    version = 15,  // 隔离缺少用户身份的旧 Memory 2.0 scope
+    version = 19,
 )
 @TypeConverters(VectorMemoryConverters::class, AppTypeConverters::class)
 abstract class AppDatabase : RoomDatabase() {
@@ -90,6 +92,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun memoryRelationDao(): com.companion.cc.data.local.dao.MemoryRelationDao
     abstract fun memoryRetrievalDao(): com.companion.cc.data.local.dao.MemoryRetrievalDao
     abstract fun memoryScopeQuarantineDao(): MemoryScopeQuarantineDao
+    abstract fun reflectionJobDao(): com.companion.cc.data.local.dao.ReflectionJobDao
 
     companion object {
         @Volatile
@@ -116,7 +119,11 @@ abstract class AppDatabase : RoomDatabase() {
                         APP_MIGRATION_11_12,
                         APP_MIGRATION_12_13,
                         APP_MIGRATION_13_14,
-                        APP_MIGRATION_14_15
+                        APP_MIGRATION_14_15,
+                        APP_MIGRATION_15_16,
+                        APP_MIGRATION_16_17,
+                        APP_MIGRATION_17_18,
+                        APP_MIGRATION_18_19
                     )
                     .fallbackToDestructiveMigrationOnDowngrade()
                     .build()
@@ -126,4 +133,3 @@ abstract class AppDatabase : RoomDatabase() {
         }
     }
 }
-

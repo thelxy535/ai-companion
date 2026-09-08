@@ -11,6 +11,10 @@ import com.companion.cc.domain.model.MessageRole
 import com.companion.cc.domain.character.TemperamentDirective
 import com.companion.cc.domain.character.TemperamentProfile
 import com.companion.cc.domain.character.HumanLikeCharacterGuidance
+import com.companion.cc.domain.character.InnerState
+import com.companion.cc.domain.character.SceneContinuityPolicy
+import com.companion.cc.domain.character.ActionContinuityPolicy
+import com.companion.cc.domain.message.MessageContentParser
 import com.companion.cc.domain.usecase.StreamSendMessageUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -41,6 +45,7 @@ class CharacterPreviewViewModel @Inject constructor(
         val content: String,
         val timestamp: Long,
         val isStreaming: Boolean = false,
+        val action: String? = null,
     )
 
     private val _messages = MutableStateFlow<List<PreviewMessage>>(emptyList())
@@ -61,6 +66,7 @@ class CharacterPreviewViewModel @Inject constructor(
     private var companionId: String = "preview"
     private var userId: String = "preview-user"
     private var temperament: TemperamentProfile = TemperamentProfile.DEFAULT
+    private var previewSceneState: InnerState = InnerState()
 
     init {
         viewModelScope.launch {
@@ -124,7 +130,22 @@ class CharacterPreviewViewModel @Inject constructor(
             }
 
             val last = _messages.value.last()
-            _messages.value = _messages.value.dropLast(1) + last.copy(isStreaming = false)
+            val parsed = if (last.role == MessageRole.ASSISTANT) MessageContentParser.parse(last.content) else null
+            val acceptedAction = ActionContinuityPolicy.accept(parsed?.action, previewSceneState.recentAction)
+            if (parsed != null) {
+                previewSceneState = SceneContinuityPolicy.update(
+                    previous = previewSceneState,
+                    assistantText = parsed.dialogue,
+                    action = acceptedAction,
+                    now = System.currentTimeMillis(),
+                    declaredScene = parsed.scene
+                )
+            }
+            _messages.value = _messages.value.dropLast(1) + last.copy(
+                content = parsed?.dialogue ?: last.content,
+                action = acceptedAction,
+                isStreaming = false
+            )
             _isSending.value = false
         }
     }
@@ -187,6 +208,9 @@ class CharacterPreviewViewModel @Inject constructor(
             appendLine("## 硬性要求")
             appendLine("- 始终保持角色一致，口语化、有情绪温度；绝不跳出角色、绝不自称 AI 或语言模型。")
             appendLine("- 回复保持对话体，不写旁白说明，不解释你为什么这样说话。")
+            appendLine("- 动作是对白下方的小字旁白，不是对白内容。动作可省略，不要每条都写；若写动作，用单独一行 [动作: ...]，不要混进对白。")
+            appendLine("- 同一段聊天默认延续位置、穿着、正在做的事和身体状态。几分钟内不要自行换场，只有明确交代经过或转场时才改变场景。")
+            appendLine("- 只有地点、房间、姿态、穿着或手持物确实变化时，才在动作后附加 [场景: 地点=...; 房间=...; 姿态=...; 穿着=...; 手持=...]；没变化就不要输出。")
             appendLine(HumanLikeCharacterGuidance.TEXT)
         }
     }

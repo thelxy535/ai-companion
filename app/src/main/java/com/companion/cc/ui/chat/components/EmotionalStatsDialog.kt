@@ -6,33 +6,34 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.companion.cc.domain.model.EmotionalState
 import com.companion.cc.domain.model.Mood
 import com.companion.cc.ui.chat.ConversationStats
+import com.companion.cc.ui.components.V9PMActionButton
+import com.companion.cc.ui.components.V9PMDialogSurface
+import kotlinx.coroutines.flow.StateFlow
 
 /**
  * 情感状态弹出对话框
  */
 @Composable
 fun EmotionalStatsDialog(
-    emotionalState: EmotionalState,
-    conversationStats: ConversationStats,
+    emotionalStateFlow: kotlinx.coroutines.flow.StateFlow<EmotionalState>,
+    conversationStatsFlow: kotlinx.coroutines.flow.StateFlow<ConversationStats>,
     onDismiss: () -> Unit
 ) {
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.large,
-            tonalElevation = 3.dp
-        ) {
+    val emotionalState by emotionalStateFlow.collectAsState()
+    val conversationStats by conversationStatsFlow.collectAsState()
+    V9PMDialogSurface(onDismissRequest = onDismiss, modifier = Modifier.widthIn(max = 400.dp)) {
             Column(
-                modifier = Modifier
-                    .padding(24.dp)
-                    .widthIn(max = 400.dp),
+                modifier = Modifier.padding(24.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 // 标题
@@ -106,16 +107,10 @@ fun EmotionalStatsDialog(
                 }
 
                 // 关闭按钮
-                Button(
-                    onClick = onDismiss,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("关闭")
-                }
+                V9PMActionButton(label = "关闭", onClick = onDismiss, modifier = Modifier.fillMaxWidth(), height = 40.dp)
             }
         }
     }
-}
 
 @Composable
 private fun StatusIndicator(
@@ -151,9 +146,11 @@ private fun StatusIndicator(
 
         LinearProgressIndicator(
             progress = value,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(8.dp)
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(999.dp)),
+
             color = color,
             trackColor = MaterialTheme.colorScheme.surfaceVariant
         )

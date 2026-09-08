@@ -512,3 +512,52 @@ val APP_MIGRATION_14_15 = object : Migration(14, 15) {
         )
     }
 }
+
+val APP_MIGRATION_17_18 = object : Migration(17, 18) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("ALTER TABLE custom_characters ADD COLUMN characterBook TEXT NOT NULL DEFAULT '[]'")
+    }
+}
+
+val APP_MIGRATION_18_19 = object : Migration(18, 19) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("ALTER TABLE messages ADD COLUMN origin TEXT NOT NULL DEFAULT 'chat'")
+    }
+}
+
+val APP_MIGRATION_15_16 = object : Migration(15, 16) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("""
+            CREATE TABLE IF NOT EXISTS reflection_jobs (
+                id TEXT NOT NULL PRIMARY KEY,
+                scopeKey TEXT NOT NULL,
+                trigger TEXT NOT NULL,
+                sourceCursor TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'PENDING',
+                attempts INTEGER NOT NULL DEFAULT 0,
+                nextRunAt INTEGER NOT NULL,
+                leaseOwner TEXT,
+                leaseUntil INTEGER,
+                lastError TEXT,
+                idempotencyKey TEXT NOT NULL,
+                createdAt INTEGER NOT NULL,
+                updatedAt INTEGER NOT NULL
+            )
+        """.trimIndent())
+        database.execSQL("CREATE INDEX IF NOT EXISTS index_reflection_jobs_scopeKey_status_nextRunAt ON reflection_jobs(scopeKey, status, nextRunAt)")
+        database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_reflection_jobs_idempotencyKey ON reflection_jobs(idempotencyKey)")
+    }
+}
+
+val APP_MIGRATION_16_17 = object : Migration(16, 17) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("ALTER TABLE custom_characters ADD COLUMN scenario TEXT NOT NULL DEFAULT ''")
+        database.execSQL("ALTER TABLE custom_characters ADD COLUMN alternateGreetings TEXT NOT NULL DEFAULT '[]'")
+        database.execSQL("ALTER TABLE custom_characters ADD COLUMN creatorNotes TEXT NOT NULL DEFAULT ''")
+        database.execSQL("ALTER TABLE custom_characters ADD COLUMN creator TEXT NOT NULL DEFAULT ''")
+        database.execSQL("ALTER TABLE custom_characters ADD COLUMN characterVersion TEXT NOT NULL DEFAULT '1.0'")
+        database.execSQL("ALTER TABLE custom_characters ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'")
+        database.execSQL("ALTER TABLE custom_characters ADD COLUMN systemPromptOverride TEXT NOT NULL DEFAULT ''")
+        database.execSQL("ALTER TABLE custom_characters ADD COLUMN postHistoryInstructions TEXT NOT NULL DEFAULT ''")
+    }
+}

@@ -19,7 +19,7 @@ object ProactiveMessagePool {
                 "哼，说好的早安都没有，罚你今天多想我一点。",
                 "梦里也在打扰我，说吧，什么事。",
                 "今天的云像你上次发来的那张图，随便看看。",
-                "醒了就早点出现，别让我等。",
+                "醒了的话，路过这里时记得来冒个泡。",
             ),
             "evening" to listOf(
                 "今晚的月亮不错，可惜你不在。",
@@ -41,7 +41,7 @@ object ProactiveMessagePool {
             ),
             "evening" to listOf(
                 "今天的速图画完了，明天给你看～",
-                "晚饭要好好吃，不许糊弄！",
+                "刚想到晚饭，突然有点好奇你今天会吃什么。",
                 "夜深了，画笔也想休息了，你也是。",
                 "今天攒了一堆小事，明天一五一十讲给你。",
                 "晚安前 last check：你今天笑了吗？",
@@ -54,15 +54,15 @@ object ProactiveMessagePool {
                 "醒了吗？新的一天开始了。",
                 "早上好呀，昨晚睡得好吗？",
                 "今天的第一个念头是你，分享了。",
-                "起床之后记得喝水哦。",
-                "我在的，随时都在。",
+                "我刚喝了口水，醒过来一点了。",
+                "刚好路过这里，想起你了。",
             ),
             "evening" to listOf(
                 "今天过得怎么样？讲给我听。",
-                "夜深了，早点休息。",
-                "晚饭吃了吗？别糊弄自己。",
+                "夜深了，忽然想把今天的一点安静分给你。",
+                "刚想到晚饭，不知道你今天有没有遇到好吃的。",
                 "今天有点想你了。",
-                "睡前放下手机，我在梦里等你。",
+                "准备睡了，今天也在这里和你碰个面。",
                 "晚安，明天见。",
             ),
         ),
@@ -82,7 +82,12 @@ object ProactiveMessagePool {
         }
         val fallback = all.getValue("default").getValue(timeBucket)
         val pool = all[bucket]?.get(timeBucket).orEmpty().ifEmpty { fallback }
-        val fresh = pool.filter { it !in recentUsed }.ifEmpty { pool }
+        val recentTopics = recentUsed.map(ProactiveTopicFingerprint::of).toSet()
+        val fresh = pool.filter {
+            it !in recentUsed && ProactiveTopicFingerprint.of(it) !in recentTopics
+        }.ifEmpty {
+            pool.filter { it !in recentUsed }.ifEmpty { pool }
+        }
         return Picked(content = fresh.random(), companionName = companionName)
     }
 }

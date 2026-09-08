@@ -52,6 +52,9 @@ fun SceneTopBar(
         modifier = modifier
             .fillMaxWidth()
             .background(colors.surface.copy(alpha = 0.84f))
+            // The app shell draws its own 44dp status capsule above content.
+            // Reserve the same space here so the title and actions never sit underneath it.
+            .padding(top = 44.dp)
             .statusBarsPadding()
     ) {
         Row(
@@ -62,12 +65,13 @@ fun SceneTopBar(
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (onNavigateBack != null) {
-                IconButton(onClick = onNavigateBack) {
-                    Icon(
-                        imageVector = androidx.compose.material.icons.Icons.Default.ArrowBack,
-                        contentDescription = navigationContentDescription
-                    )
-                }
+                V9PMIconButton(
+                    icon = androidx.compose.material.icons.Icons.Default.ArrowBack,
+                    contentDescription = navigationContentDescription,
+                    onClick = onNavigateBack,
+                    size = 48.dp,
+                    tint = colors.onSurface
+                )
             } else {
                 Spacer(Modifier.size(48.dp))
             }
@@ -81,9 +85,14 @@ fun SceneTopBar(
                 title()
             }
             actions.forEach { action ->
-                IconButton(onClick = action.onClick, enabled = action.enabled) {
-                    Icon(action.icon, contentDescription = action.contentDescription)
-                }
+                V9PMIconButton(
+                    icon = action.icon,
+                    contentDescription = action.contentDescription,
+                    onClick = action.onClick,
+                    enabled = action.enabled,
+                    size = 48.dp,
+                    tint = colors.onSurface
+                )
             }
         }
         Divider(color = colors.outlineVariant.copy(alpha = 0.62f))

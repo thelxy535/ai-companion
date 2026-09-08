@@ -22,6 +22,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.companion.cc.ui.components.Avatar
+import com.companion.cc.ui.components.V9PMActionButton
+import com.companion.cc.ui.components.V9PMDialogSurface
+import com.companion.cc.ui.components.V9PMIconButton
 import com.companion.cc.ui.theme.tactileClickable
 
 /**
@@ -86,89 +89,65 @@ fun AvatarSettingsDialog(
         }
     }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
+    V9PMDialogSurface(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
-                )
-                IconButton(onClick = onDismiss) {
-                    Icon(Icons.Default.Close, contentDescription = "关闭")
-                }
+                Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                V9PMIconButton(Icons.Default.Close, "关闭", onDismiss, size = 42.dp, iconSize = 18.dp)
             }
-        },
-        text = {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Avatar(
-                    avatarUrl = currentAvatarUrl,
-                    emoji = null,
-                    size = 120.dp,
-                    backgroundColor = MaterialTheme.colorScheme.primaryContainer
-                )
 
-                Spacer(modifier = Modifier.height(24.dp))
+            Avatar(
+                avatarUrl = currentAvatarUrl,
+                emoji = null,
+                size = 120.dp,
+                backgroundColor = MaterialTheme.colorScheme.primaryContainer
+            )
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Button(
-                        onClick = {
-                            imagePickerLauncher.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                            )
-                        },
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(Icons.Default.Photo, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("相册")
-                    }
-
-                    Button(
-                        onClick = ::startCamera,
-                        enabled = context.packageManager.hasSystemFeature(
-                            PackageManager.FEATURE_CAMERA_ANY
-                        ),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("拍照")
-                    }
-                }
-
-                if (currentAvatarUrl != null) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedButton(
-                        onClick = {
-                            onClearAvatar()
-                            onDismiss()
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("清除头像")
-                    }
-                }
-            }
-        },
-        confirmButton = {},
-        dismissButton = {
-            TextButton(
-                onClick = onDismiss,
-                modifier = Modifier.fillMaxWidth()
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Text("取消")
+                V9PMActionButton(
+                    label = "相册",
+                    icon = Icons.Default.Photo,
+                    onClick = { imagePickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                    modifier = Modifier.weight(1f),
+                    height = 44.dp
+                )
+                V9PMActionButton(
+                    label = "拍照",
+                    icon = Icons.Default.CameraAlt,
+                    onClick = ::startCamera,
+                    enabled = context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY),
+                    modifier = Modifier.weight(1f),
+                    height = 44.dp
+                )
             }
+
+            if (currentAvatarUrl != null) {
+                V9PMActionButton(
+                    label = "清除头像",
+                    onClick = {
+                        onClearAvatar()
+                        onDismiss()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    destructive = true,
+                    height = 44.dp
+                )
+            }
+
+            V9PMActionButton(label = "取消", onClick = onDismiss, modifier = Modifier.fillMaxWidth(), height = 40.dp)
         }
-    )
+    }
 }
 
 /**

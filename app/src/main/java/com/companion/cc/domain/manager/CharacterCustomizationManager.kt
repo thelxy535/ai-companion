@@ -38,7 +38,17 @@ class CharacterCustomizationManager @Inject constructor(
         greetingMessage: String = "你好，我是 $name",
         exampleDialogues: List<ExampleDialogue> = emptyList(),
         voiceConfig: VoiceConfig? = null,
-        behaviorRules: BehaviorRules? = null
+        behaviorRules: BehaviorRules? = null,
+        scenario: String = "",
+        alternateGreetings: List<String> = emptyList(),
+        creatorNotes: String = "",
+        creator: String = "",
+        characterVersion: String = "1.0",
+        tags: List<String> = emptyList(),
+        systemPromptOverride: String = "",
+        postHistoryInstructions: String = "",
+        characterBook: List<com.companion.cc.domain.model.CharacterBookEntry> = emptyList(),
+        rhythm: com.companion.cc.domain.character.CompanionRhythm = com.companion.cc.domain.character.CompanionRhythm()
     ): CustomCharacter {
         val characterId = UUID.randomUUID().toString()
         val character = CustomCharacter(
@@ -52,12 +62,27 @@ class CharacterCustomizationManager @Inject constructor(
             greetingMessage = greetingMessage,
             exampleDialogues = exampleDialogues,
             voiceConfig = voiceConfig,
-            behaviorRules = behaviorRules
+            behaviorRules = behaviorRules,
+            scenario = scenario,
+            alternateGreetings = alternateGreetings,
+            creatorNotes = creatorNotes,
+            creator = creator,
+            characterVersion = characterVersion,
+            tags = tags,
+            systemPromptOverride = systemPromptOverride,
+            postHistoryInstructions = postHistoryInstructions,
+            characterBook = characterBook,
+            rhythm = rhythm
         )
 
         // 保存到数据库
         characterRepository.saveCharacter(character)
 
+        return character
+    }
+
+    suspend fun saveImportedCharacter(character: CustomCharacter): CustomCharacter {
+        characterRepository.saveCharacter(character)
         return character
     }
 

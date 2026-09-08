@@ -22,8 +22,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.SettingsBrightness
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -151,20 +149,14 @@ fun V7TopStatusBar(
             )
         }
 
-        IconButton(
+        V9PMIconButton(
+            icon = themeMode.icon,
+            contentDescription = themeMode.label,
             onClick = { onThemeModeChange(themeMode.next()) },
-            modifier = Modifier
-                // 触摸优化：48dp 热区（Material 最低 48dp 标准），图标仍 20dp
-                .size(48.dp)
-                .clip(CircleShape)
-                .background(pillBg)
-        ) {
-            Icon(
-                imageVector = themeMode.icon,
-                contentDescription = themeMode.label,
-                tint = inkColor,
-                modifier = Modifier.size(20.dp)
-            )
-        }
+            size = 48.dp,
+            iconSize = 20.dp,
+            shape = CircleShape,
+            tint = inkColor
+        )
     }
 }

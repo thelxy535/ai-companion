@@ -32,7 +32,9 @@ fun MarkdownText(
     val visualTheme = LocalVisualTheme.current
 
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        parseMarkdown(text).forEach { block ->
+                // V9PM：解析结果按内容缓存——重组/流式更新不再重复解析
+                val blocks = androidx.compose.runtime.remember(text) { parseMarkdown(text) }
+                blocks.forEach { block ->
             when (block) {
                 is MarkdownBlock.Text -> {
                     Text(

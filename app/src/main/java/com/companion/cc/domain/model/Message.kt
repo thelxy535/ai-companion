@@ -21,7 +21,8 @@ data class Message(
 
     // 视觉感知扩展（多模态支持）
     val imageUrl: String? = null,        // 图片 URL（可以是本地 file:// 或云端 https://）
-    val imageAnalysis: String? = null    // 视觉理解结果（结构化描述，由 VisionManager 填充）
+    val imageAnalysis: String? = null,   // 视觉理解结果（结构化描述，由 VisionManager 填充）
+    val origin: String = "chat"          // chat / proactive / system
 )
 
 @Serializable

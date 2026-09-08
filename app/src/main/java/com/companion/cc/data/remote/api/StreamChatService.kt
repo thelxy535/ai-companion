@@ -14,6 +14,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import javax.inject.Inject
 import javax.inject.Singleton
+import com.companion.cc.domain.manager.normalizeApiBaseUrl
 
 /**
  * 流式聊天服务
@@ -39,7 +40,7 @@ class StreamChatService @Inject constructor(
         request: ChatRequest
     ): Flow<String> = flow {
         // 规范化baseUrl（去掉尾部斜杠）
-        val normalizedBaseUrl = baseUrl.trimEnd('/')
+        val normalizedBaseUrl = normalizeApiBaseUrl(baseUrl)
 
         android.util.Log.d("StreamChatService", "=== 开始流式请求 ===")
         android.util.Log.d("StreamChatService", "URL: $normalizedBaseUrl/chat/completions")

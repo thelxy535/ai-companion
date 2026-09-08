@@ -48,5 +48,7 @@ data class MessageEntity(
     val imageUrl: String? = null,        // 图片 URL
 
     @ColumnInfo(name = "image_analysis")
-    val imageAnalysis: String? = null    // 视觉理解结果
+    val imageAnalysis: String? = null,   // 视觉理解结果
+
+    val origin: String = "chat"         // chat / proactive / system
 )

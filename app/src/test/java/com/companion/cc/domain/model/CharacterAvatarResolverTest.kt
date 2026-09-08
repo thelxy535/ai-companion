@@ -7,17 +7,31 @@ import org.junit.Test
 class CharacterAvatarResolverTest {
     @Test
     fun imageReferenceIsSeparatedFromEmojiAvatar() {
-        val resolved = CharacterAvatarResolver.resolve("content://avatar/1", "Moss")
+        val character = ChatCharacter.Custom(
+            id = "preview",
+            name = "Moss",
+            avatar = "content://avatar/1",
+            description = "",
+            personality = "",
+            userId = "user-1"
+        )
+        val resolved = CharacterAvatarResolver.resolve(character)
 
         assertEquals("content://avatar/1", resolved.avatarUrl)
-        assertEquals("M", resolved.emoji)
+        assertEquals("✨", resolved.emoji)
     }
 
     @Test
     fun emojiAvatarRemainsFallbackInsteadOfBeingLoadedAsImage() {
-        val resolved = CharacterAvatarResolver.resolve("🎨", "Muse")
+        val character = ChatCharacter.BuiltIn(
+            id = "muse",
+            name = "Muse",
+            avatar = "🎨",
+            description = "",
+        )
+        val resolved = CharacterAvatarResolver.resolve(character)
 
         assertNull(resolved.avatarUrl)
-        assertEquals("🎨", resolved.emoji)
+        assertEquals("🎭", resolved.emoji)
     }
 }

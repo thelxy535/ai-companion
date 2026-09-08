@@ -18,6 +18,16 @@ data class CustomCharacter(
     val exampleDialogues: List<ExampleDialogue>,
     val voiceConfig: VoiceConfig?,
     val behaviorRules: BehaviorRules?,
+    val scenario: String = "",
+    val alternateGreetings: List<String> = emptyList(),
+    val creatorNotes: String = "",
+    val creator: String = "",
+    val characterVersion: String = "1.0",
+    val tags: List<String> = emptyList(),
+    val systemPromptOverride: String = "",
+    val postHistoryInstructions: String = "",
+    val characterBook: List<CharacterBookEntry> = emptyList(),
+    val rhythm: com.companion.cc.domain.character.CompanionRhythm = com.companion.cc.domain.character.CompanionRhythm(),
     val isCustom: Boolean = true,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
@@ -36,6 +46,9 @@ data class PersonalityTraits(
     val customTraits: Map<String, String> = emptyMap() // 自定义特质
 ) {
     companion object {
+        const val NATURAL_DESCRIPTION_KEY = "人格底色"
+        const val MEMORY_PREFERENCE_KEY = "记忆偏好"
+
         fun default() = PersonalityTraits(
             openness = 0.7f,
             conscientiousness = 0.6f,
@@ -45,6 +58,16 @@ data class PersonalityTraits(
             customTraits = emptyMap()
         )
     }
+}
+
+fun PersonalityTraits.naturalDescription(): String =
+    customTraits[PersonalityTraits.NATURAL_DESCRIPTION_KEY].orEmpty()
+
+fun PersonalityTraits.withNaturalDescription(value: String): PersonalityTraits {
+    val traits = customTraits.toMutableMap()
+    if (value.isBlank()) traits.remove(PersonalityTraits.NATURAL_DESCRIPTION_KEY)
+    else traits[PersonalityTraits.NATURAL_DESCRIPTION_KEY] = value.trim()
+    return copy(customTraits = traits.toMap())
 }
 
 /**

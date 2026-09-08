@@ -24,6 +24,16 @@ object CustomCharacterMapper {
             exampleDialogues = parseExampleDialogues(entity.exampleDialogues),
             voiceConfig = entity.voiceConfig?.let { parseVoiceConfig(it) },
             behaviorRules = entity.behaviorRules?.let { parseBehaviorRules(it) },
+            scenario = entity.scenario,
+            alternateGreetings = parseStringList(entity.alternateGreetings),
+            creatorNotes = entity.creatorNotes,
+            creator = entity.creator,
+            characterVersion = entity.characterVersion,
+            tags = parseStringList(entity.tags),
+            systemPromptOverride = entity.systemPromptOverride,
+            postHistoryInstructions = entity.postHistoryInstructions,
+            characterBook = parseCharacterBook(entity.characterBook),
+            rhythm = parseRhythm(entity.personality),
             isCustom = entity.isCustom,
             createdAt = entity.createdAt,
             updatedAt = entity.updatedAt
@@ -37,20 +47,78 @@ object CustomCharacterMapper {
             name = domain.name,
             avatar = domain.avatar,
             description = domain.description,
-            personality = serializePersonalityTraits(domain.personality),
+            personality = serializePersonalityTraits(domain.personality, domain.rhythm),
             backstory = domain.backstory,
             greetingMessage = domain.greetingMessage,
             exampleDialogues = serializeExampleDialogues(domain.exampleDialogues),
             voiceConfig = domain.voiceConfig?.let { serializeVoiceConfig(it) },
             behaviorRules = domain.behaviorRules?.let { serializeBehaviorRules(it) },
+            scenario = domain.scenario,
+            alternateGreetings = serializeStringList(domain.alternateGreetings),
+            creatorNotes = domain.creatorNotes,
+            creator = domain.creator,
+            characterVersion = domain.characterVersion,
+            tags = serializeStringList(domain.tags),
+            systemPromptOverride = domain.systemPromptOverride,
+            postHistoryInstructions = domain.postHistoryInstructions,
+            characterBook = serializeCharacterBook(domain.characterBook),
             isCustom = domain.isCustom,
             createdAt = domain.createdAt,
             updatedAt = domain.updatedAt
         )
     }
 
+    private fun serializeStringList(values: List<String>): String = JSONArray(values).toString()
+
+    private fun serializeCharacterBook(entries: List<com.companion.cc.domain.model.CharacterBookEntry>): String {
+        val array = JSONArray()
+        entries.forEach { entry ->
+            array.put(JSONObject().apply {
+                put("keys", JSONArray(entry.keys))
+                put("content", entry.content)
+                put("enabled", entry.enabled)
+                put("constant", entry.constant)
+                put("priority", entry.priority)
+                put("insertionOrder", entry.insertionOrder)
+            })
+        }
+        return array.toString()
+    }
+
+    private fun parseCharacterBook(json: String): List<com.companion.cc.domain.model.CharacterBookEntry> {
+        return runCatching {
+            val array = JSONArray(json)
+            List(array.length()) { index ->
+                val obj = array.getJSONObject(index)
+                val keys = mutableListOf<String>()
+                val keysArray = obj.optJSONArray("keys")
+                if (keysArray != null) {
+                    for (i in 0 until keysArray.length()) keys.add(keysArray.getString(i))
+                }
+                com.companion.cc.domain.model.CharacterBookEntry(
+                    keys = keys,
+                    content = obj.optString("content", ""),
+                    enabled = obj.optBoolean("enabled", true),
+                    constant = obj.optBoolean("constant", false),
+                    priority = obj.optInt("priority", 0),
+                    insertionOrder = obj.optInt("insertionOrder", 0)
+                )
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    private fun parseStringList(json: String): List<String> {
+        return runCatching {
+            val array = JSONArray(json)
+            List(array.length()) { index -> array.getString(index) }
+        }.getOrDefault(emptyList())
+    }
+
     // PersonalityTraits 序列化
-    private fun serializePersonalityTraits(traits: PersonalityTraits): String {
+    private fun serializePersonalityTraits(
+        traits: PersonalityTraits,
+        rhythm: com.companion.cc.domain.character.CompanionRhythm = com.companion.cc.domain.character.CompanionRhythm()
+    ): String {
         return JSONObject().apply {
             put("openness", traits.openness)
             put("conscientiousness", traits.conscientiousness)
@@ -58,8 +126,27 @@ object CustomCharacterMapper {
             put("agreeableness", traits.agreeableness)
             put("neuroticism", traits.neuroticism)
             put("customTraits", JSONObject(traits.customTraits))
+            put("rhythm", JSONObject().apply {
+                put("wakeHour", rhythm.wakeHour)
+                put("sleepHour", rhythm.sleepHour)
+                put("socialBattery", rhythm.socialBattery)
+                put("memoryStickiness", rhythm.memoryStickiness)
+                put("recoverySpeed", rhythm.recoverySpeed)
+            })
         }.toString()
     }
+
+    private fun parseRhythm(json: String): com.companion.cc.domain.character.CompanionRhythm =
+        runCatching {
+            val obj = JSONObject(json).optJSONObject("rhythm") ?: return@runCatching com.companion.cc.domain.character.CompanionRhythm()
+            com.companion.cc.domain.character.CompanionRhythm(
+                wakeHour = obj.optDouble("wakeHour", 8.0).toFloat(),
+                sleepHour = obj.optDouble("sleepHour", 23.0).toFloat(),
+                socialBattery = obj.optDouble("socialBattery", 0.65).toFloat(),
+                memoryStickiness = obj.optDouble("memoryStickiness", 0.5).toFloat(),
+                recoverySpeed = obj.optDouble("recoverySpeed", 0.5).toFloat()
+            )
+        }.getOrDefault(com.companion.cc.domain.character.CompanionRhythm())
 
     private fun parsePersonalityTraits(json: String): PersonalityTraits {
         val obj = JSONObject(json)
@@ -119,7 +206,7 @@ object CustomCharacterMapper {
             pitch = obj.getDouble("pitch").toFloat(),
             speed = obj.getDouble("speed").toFloat(),
             volume = obj.getDouble("volume").toFloat(),
-            voiceId = obj.optString("voiceId", null)
+            voiceId = if (obj.isNull("voiceId")) null else obj.optString("voiceId").takeIf { it.isNotBlank() }
         )
     }
 

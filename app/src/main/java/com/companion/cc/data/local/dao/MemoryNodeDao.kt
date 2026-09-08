@@ -46,6 +46,17 @@ interface MemoryNodeDao {
         limit: Int = 100
     ): Flow<List<MemoryNodeEntity>>
 
+    @Query("SELECT * FROM memory_nodes WHERE scopeKey = :scopeKey AND status = 'active' AND kind = :kind AND subjectRole = :subjectRole AND subjectKey = :subjectKey")
+    suspend fun findActiveByKindAndSubject(
+        scopeKey: String,
+        kind: String,
+        subjectRole: String,
+        subjectKey: String
+    ): List<MemoryNodeEntity>
+
+    @Query("SELECT * FROM memory_nodes WHERE scopeKey = :scopeKey AND status = 'active' AND kind = :kind AND validFrom <= :now AND (validUntil IS NULL OR validUntil > :now) ORDER BY updatedAt DESC LIMIT :limit")
+    suspend fun findActiveByKind(scopeKey: String, kind: String, now: Long, limit: Int): List<MemoryNodeEntity>
+
     @Update
     suspend fun update(node: MemoryNodeEntity)
 }

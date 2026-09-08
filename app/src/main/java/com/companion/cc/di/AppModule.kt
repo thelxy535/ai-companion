@@ -13,6 +13,10 @@ import com.companion.cc.data.local.repository.MemoryCapsuleV2Importer
 import com.companion.cc.data.local.repository.MemoryCapsuleV2Transfer
 import com.companion.cc.data.local.repository.MemoryCapsuleV2TransferService
 import com.companion.cc.data.local.repository.MemoryRepository
+import com.companion.cc.data.local.repository.MemorySourceWriter
+import com.companion.cc.data.local.repository.ReflectionJobScheduler
+import com.companion.cc.domain.memory.MemoryGraphRepository
+import com.companion.cc.domain.memory.RoomMemoryGraphRepository
 import com.companion.cc.data.repository.LocalCharacterExternalCleanup
 import com.companion.cc.data.repository.RoomCharacterDeletionTransaction
 import com.companion.cc.data.repository.RoomCharacterMemoryCapsuleRepository
@@ -143,6 +147,40 @@ object AppModule {
         relationDao = database.memoryRelationDao(),
         retrievalDao = database.memoryRetrievalDao()
     )
+
+    @Provides
+    @Singleton
+    fun provideReflectionJobDao(database: AppDatabase): com.companion.cc.data.local.dao.ReflectionJobDao =
+        database.reflectionJobDao()
+
+
+    @Provides
+    @Singleton
+    fun provideMemorySourceDao(database: AppDatabase): com.companion.cc.data.local.dao.MemorySourceDao =
+        database.memorySourceDao()
+
+    @Provides
+    @Singleton
+    fun provideMemoryReviewDao(database: AppDatabase): com.companion.cc.data.local.dao.MemoryReviewDao =
+        database.memoryReviewDao()
+
+    @Provides
+    @Singleton
+    fun provideMemorySourceWriter(database: AppDatabase): MemorySourceWriter =
+        MemorySourceWriter(database.memorySourceDao())
+
+    @Provides
+    @Singleton
+    fun provideReflectionJobScheduler(database: AppDatabase): ReflectionJobScheduler =
+        ReflectionJobScheduler(database.reflectionJobDao())
+
+    @Provides
+    @Singleton
+    fun provideMemoryGraphRepository(database: AppDatabase): MemoryGraphRepository =
+        RoomMemoryGraphRepository(
+            nodeDao = database.memoryNodeDao(),
+            relationDao = database.memoryRelationDao()
+        )
 
     @Provides
     @Singleton

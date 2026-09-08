@@ -34,13 +34,22 @@ import androidx.lifecycle.LifecycleEventObserver
 import com.companion.cc.domain.model.Message
 import com.companion.cc.domain.model.MessageRole
 import com.companion.cc.domain.model.MessagesByDate
-import com.companion.cc.ui.theme.LocalVisualTheme
+import com.companion.cc.domain.memory.GraphSnapshot
+import com.companion.cc.data.local.entity.MemoryNodeEntity
 import com.companion.cc.ui.theme.GlassDialogSurface
+import com.companion.cc.ui.components.V9PMActionButton
+import com.companion.cc.ui.components.V9PMChoiceRow
+import com.companion.cc.ui.components.V9PMDialogSurface
+import com.companion.cc.ui.components.V9PMTextField
+import com.companion.cc.ui.designsystem.smoothCorner
+import com.companion.cc.ui.components.V9PMTopBar
+import com.companion.cc.ui.components.SceneTopBarAction
 import com.companion.cc.ui.designsystem.pressableV5
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.offset
 
 /**
  * Memory Tree 界面
@@ -69,6 +78,7 @@ fun MemoryTreeScreen(
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showImportDialog by remember { mutableStateOf(false) }
     var selectedFilter by remember { mutableStateOf("all") }
+    var viewMode by remember { mutableStateOf(MemoryTreeMode.GRAPH) }
 
     val selectedFilterLabel = when (selectedFilter) {
         "important" -> "重要"
@@ -96,15 +106,10 @@ fun MemoryTreeScreen(
     Scaffold(
         modifier = Modifier.auroraScreenBackground(LocalVisualTheme.current.tokens.backdrop.isDark),
         topBar = {
-            TopAppBar(
-                modifier = Modifier.padding(top = 44.dp),
+            V9PMTopBar(
                 title = {
                     Column {
-                        Text(
-                            "记忆树",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Text("记忆树", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                         Text(
                             text = "$totalMessages 条消息 · $totalDays 天",
                             style = MaterialTheme.typography.bodySmall,
@@ -112,30 +117,19 @@ fun MemoryTreeScreen(
                         )
                     }
                 },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, "返回")
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { showSearchDialog = true }) {
-                        Icon(Icons.Default.Search, "搜索")
-                    }
-                    IconButton(
-                        onClick = {
-                            showFilterMenu = false
-                            showMoreMenu = true
-                        }
-                    ) {
-                        Icon(Icons.Default.MoreVert, "更多")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent
-                )
+                onNavigateBack = onNavigateBack,
+                actions = listOf(
+                    SceneTopBarAction(Icons.Default.Search, "搜索", { showSearchDialog = true }),
+                    SceneTopBarAction(Icons.Default.MoreVert, "更多", {
+                        showFilterMenu = false
+                        showMoreMenu = true
+                    })
+                ),
+                modifier = Modifier.padding(top = 44.dp)
             )
         },
-        containerColor = Color.Transparent
+        containerColor = Color.Transparent,
+        contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
     ) { padding ->
         Column(
             modifier = Modifier
@@ -152,6 +146,31 @@ fun MemoryTreeScreen(
                     showFilterMenu = true
                 }
             )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                MemoryTreeMode.entries.forEach { mode ->
+                    Surface(
+                        onClick = { viewMode = mode },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(999.dp),
+                        color = if (viewMode == mode) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                        else Color.Transparent,
+                        tonalElevation = 0.dp
+                    ) {
+                        Text(
+                            mode.label,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
+                            color = if (viewMode == mode) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1
+                        )
+                    }
+                }
+            }
             Divider(color = MaterialTheme.colorScheme.outlineVariant)
 
             when {
@@ -163,7 +182,7 @@ fun MemoryTreeScreen(
                 ) {
                     CircularProgressIndicator()
                 }
-                messagesByDate.isEmpty() -> Box(
+                messagesByDate.isEmpty() && viewMode == MemoryTreeMode.RECORDS -> Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
@@ -174,12 +193,20 @@ fun MemoryTreeScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                else -> TreeVisualizedMemoryList(
-                    messagesByDate = messagesByDate,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                )
+                else -> when (viewMode) {
+                    MemoryTreeMode.GRAPH -> MemoryGraphView(
+                        graph = viewModel.graph.collectAsState().value,
+                        modifier = Modifier.fillMaxWidth().weight(1f)
+                    )
+                    MemoryTreeMode.TIMELINE -> MemoryTimelineView(
+                        graph = viewModel.graph.collectAsState().value,
+                        modifier = Modifier.fillMaxWidth().weight(1f)
+                    )
+                    MemoryTreeMode.RECORDS -> TreeVisualizedMemoryList(
+                        messagesByDate = messagesByDate,
+                        modifier = Modifier.fillMaxWidth().weight(1f)
+                    )
+                }
             }
         }
 
@@ -195,41 +222,20 @@ fun MemoryTreeScreen(
 
         // 删除确认对话框
         if (showDeleteDialog) {
-            AlertDialog(
-                onDismissRequest = { showDeleteDialog = false },
-                icon = {
-                    Icon(
-                        Icons.Default.Warning,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.error
-                    )
-                },
-                title = { Text("清理记忆") },
-                text = { Text("确定要清理当前角色的所有记忆吗？此操作不可撤销。") },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
+            V9PMDialogSurface(onDismissRequest = { showDeleteDialog = false }) {
+                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("清理记忆", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.error)
+                    Text("确定要清理当前角色的所有记忆吗？此操作不可撤销。")
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        V9PMActionButton(label = "取消", onClick = { showDeleteDialog = false }, modifier = Modifier.weight(1f), height = 40.dp)
+                        V9PMActionButton(label = "确定清理", onClick = {
                             viewModel.clearAllMemories()
                             showDeleteDialog = false
-                            android.widget.Toast.makeText(
-                                context,
-                                "已清理所有记忆",
-                                android.widget.Toast.LENGTH_SHORT
-                            ).show()
-                        },
-                        colors = ButtonDefaults.textButtonColors(
-                            contentColor = MaterialTheme.colorScheme.error
-                        )
-                    ) {
-                        Text("确定清理")
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showDeleteDialog = false }) {
-                        Text("取消")
+                            android.widget.Toast.makeText(context, "已清理所有记忆", android.widget.Toast.LENGTH_SHORT).show()
+                        }, modifier = Modifier.weight(1f), height = 40.dp, destructive = true)
                     }
                 }
-            )
+            }
         }
     }
 
@@ -556,14 +562,15 @@ private fun MemoryStatsDialog(
         .eachCount()
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .navigationBarsPadding()
-                .padding(horizontal = 24.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
+        GlassDialogSurface(modifier = Modifier.fillMaxWidth(), shape = smoothCorner(28.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .navigationBarsPadding()
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -630,14 +637,10 @@ private fun MemoryStatsDialog(
                 )
             }
 
-            TextButton(
-                onClick = onDismiss,
-                modifier = Modifier.align(Alignment.End)
-            ) {
-                Text("关闭")
-            }
+            V9PMActionButton(label = "关闭", onClick = onDismiss, modifier = Modifier.fillMaxWidth(), height = 40.dp)
         }
     }
+}
 }
 
 @Composable
@@ -831,13 +834,13 @@ private fun SearchDialog(
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.SemiBold
             )
-            OutlinedTextField(
+            V9PMTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                label = { Text("输入关键词") },
-                placeholder = { Text("搜索消息内容…") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
+                label = "输入关键词",
+                placeholder = "搜索消息内容…",
+                modifier = Modifier.fillMaxWidth(),
+                leadingIcon = Icons.Default.Search
             )
 
             Text(
@@ -865,15 +868,21 @@ private fun SearchDialog(
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                TextButton(onClick = onDismiss) { Text("取消") }
-                Button(
+                V9PMActionButton(
+                    label = "取消",
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f),
+                    height = 40.dp
+                )
+                V9PMActionButton(
+                    label = "搜索",
                     onClick = { onSearch(searchQuery) },
-                    enabled = searchQuery.isNotBlank()
-                ) {
-                    Text("搜索")
-                }
+                    enabled = searchQuery.isNotBlank(),
+                    modifier = Modifier.weight(1f),
+                    height = 40.dp
+                )
             }
         }
     }
@@ -885,23 +894,18 @@ private fun DateRangeOption(
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        RadioButton(
-            selected = isSelected,
-            onClick = onClick
-        )
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium
-        )
-    }
+    V9PMChoiceRow(
+        title = label,
+        selected = isSelected,
+        onClick = onClick,
+        modifier = Modifier.padding(vertical = 2.dp),
+        trailing = {
+            RadioButton(
+                selected = isSelected,
+                onClick = null
+            )
+        }
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -914,13 +918,17 @@ private fun ImportMemoryDialog(
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(horizontal = 24.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+        GlassDialogSurface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = smoothCorner(28.dp)
         ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -942,18 +950,18 @@ private fun ImportMemoryDialog(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            OutlinedTextField(
+            V9PMTextField(
                 value = jsonInput,
                 onValueChange = {
                     jsonInput = it
                     errorMessage = null
                 },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(200.dp),
-                placeholder = { Text("粘贴 JSON 内容…") },
+                placeholder = "粘贴 JSON 内容…",
                 isError = errorMessage != null,
-                supportingText = errorMessage?.let { { Text(it, color = MaterialTheme.colorScheme.error) } }
+                supportingText = errorMessage,
+                modifier = Modifier.fillMaxWidth().height(200.dp),
+                singleLine = false,
+                maxLines = 8
             )
 
             Text(
@@ -964,10 +972,11 @@ private fun ImportMemoryDialog(
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                TextButton(onClick = onDismiss) { Text("取消") }
-                Button(
+                V9PMActionButton(label = "取消", onClick = onDismiss, modifier = Modifier.weight(1f), height = 40.dp)
+                V9PMActionButton(
+                    label = "导入",
                     onClick = {
                         if (jsonInput.isBlank()) {
                             errorMessage = "请输入 JSON 内容"
@@ -980,11 +989,12 @@ private fun ImportMemoryDialog(
                             }
                         }
                     },
-                    enabled = jsonInput.isNotBlank()
-                ) {
-                    Text("导入")
-                }
+                    enabled = jsonInput.isNotBlank(),
+                    modifier = Modifier.weight(1f),
+                    height = 40.dp
+                )
             }
         }
     }
+}
 }

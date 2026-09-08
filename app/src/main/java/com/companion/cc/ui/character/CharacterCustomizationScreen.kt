@@ -1,6 +1,10 @@
 package com.companion.cc.ui.character
 
 import com.companion.cc.ui.designsystem.auroraScreenBackground
+import com.companion.cc.ui.components.V9PMActionButton
+import com.companion.cc.ui.components.V9PMDialogSurface
+import com.companion.cc.ui.components.V9PMTextField
+import com.companion.cc.ui.components.V9PMTopBar
 import com.companion.cc.ui.theme.LocalVisualTheme
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
@@ -19,12 +23,14 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.companion.cc.ui.theme.TactileGesture
 import com.companion.cc.ui.theme.rememberTactileAction
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
 
 /**
  * 自定义步骤枚举
@@ -44,6 +50,7 @@ enum class CustomizationStep(val title: String) {
 fun CharacterCustomizationScreen(
     characterId: String? = null,
     onNavigateBack: () -> Unit,
+    onTestChat: () -> Unit = {},
     viewModel: CharacterCustomizationViewModel = hiltViewModel()
 ) {
     var currentStep by rememberSaveable { mutableStateOf(CustomizationStep.BASIC_INFO) }
@@ -98,36 +105,47 @@ fun CharacterCustomizationScreen(
     }
 
     if (showDiscardDialog) {
-        AlertDialog(
-            onDismissRequest = { showDiscardDialog = false },
-            title = { Text("放弃未保存修改？") },
-            text = { Text("离开后，当前修改将不会保存。") },
-            confirmButton = {
-                TextButton(onClick = onNavigateBack) { Text("放弃") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDiscardDialog = false }) { Text("继续编辑") }
+        V9PMDialogSurface(onDismissRequest = { showDiscardDialog = false }) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text("放弃未保存修改？", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                Text("离开后，当前修改将不会保存。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    V9PMActionButton(
+                        label = "继续编辑",
+                        onClick = { showDiscardDialog = false },
+                        modifier = Modifier.weight(1f),
+                        height = 40.dp
+                    )
+                    V9PMActionButton(
+                        label = "放弃",
+                        onClick = onNavigateBack,
+                        destructive = true,
+                        modifier = Modifier.weight(1f),
+                        height = 40.dp
+                    )
+                }
             }
-        )
+        }
     }
 
     Scaffold(
         modifier = Modifier.auroraScreenBackground(LocalVisualTheme.current.tokens.backdrop.isDark),
         topBar = {
-            TopAppBar(
-                modifier = Modifier.padding(top = 44.dp),
-                title = { Text(if (characterId != null) "编辑角色" else "创建角色") },
-                navigationIcon = {
-                    IconButton(onClick = goBack, enabled = navigationEnabled) {
-                        Icon(Icons.Default.ArrowBack, "返回")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent
-                )
+            V9PMTopBar(
+                title = { Text(if (characterId != null) "编辑角色" else "创建角色", color = MaterialTheme.colorScheme.onSurface) },
+                onNavigateBack = goBack,
+                actions = emptyList(),
+                modifier = Modifier.padding(top = 44.dp)
             )
         },
-        containerColor = Color.Transparent
+        containerColor = Color.Transparent,
+        contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
     ) { padding ->
         Column(
             modifier = Modifier
@@ -177,45 +195,51 @@ fun CharacterCustomizationScreen(
                     .fillMaxWidth()
                     .padding(16.dp)
                     .imePadding(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 // 上一步按钮
                 if (currentStep.ordinal > 0) {
-                    OutlinedButton(
+                    V9PMActionButton(
+                        label = "上一步",
+                        icon = Icons.Default.ArrowBack,
                         onClick = previousStep,
-                        enabled = navigationEnabled
-                    ) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("上一步")
-                    }
+                        enabled = navigationEnabled,
+                        modifier = Modifier.weight(1f),
+                        height = 44.dp
+                    )
                 } else {
-                    Spacer(modifier = Modifier.width(1.dp))
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+
+                // V9PM：试聊——创建前测试对话（草稿不入库，可感受脾气后返回调整）
+                if (currentStep == CustomizationStep.EXAMPLES) {
+                    V9PMActionButton(
+                        label = "试聊",
+                        onClick = {
+                            viewModel.buildDraft()?.let { draft ->
+                                com.companion.cc.ui.character.CharacterPreviewStore.put(draft)
+                                onTestChat()
+                            }
+                        },
+                        enabled = navigationEnabled,
+                        modifier = Modifier.weight(1f),
+                        height = 44.dp
+                    )
                 }
 
                 // 下一步/完成按钮
-                Button(
+                V9PMActionButton(
+                    label = if (currentStep == CustomizationStep.EXAMPLES) "完成" else "下一步",
+                    icon = if (currentStep == CustomizationStep.EXAMPLES) null else Icons.Default.ArrowForward,
                     onClick = nextStep,
                     enabled = when (currentStep) {
                         CustomizationStep.BASIC_INFO -> isFormValid && saveState !is CharacterSaveState.Saving
                         CustomizationStep.EXAMPLES -> saveState !is CharacterSaveState.Saving
                         else -> saveState !is CharacterSaveState.Saving
-                    }
-                ) {
-                    if (saveState is CharacterSaveState.Saving && currentStep == CustomizationStep.EXAMPLES) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            color = MaterialTheme.colorScheme.onPrimary,
-                            strokeWidth = 2.dp
-                        )
-                    } else {
-                        Text(if (currentStep == CustomizationStep.EXAMPLES) "完成" else "下一步")
-                        if (currentStep != CustomizationStep.EXAMPLES) {
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Icon(Icons.Default.ArrowForward, contentDescription = null)
-                        }
-                    }
-                }
+                    },
+                    modifier = Modifier.weight(1f),
+                    height = 44.dp
+                )
             }
         }
     }
@@ -325,6 +349,11 @@ fun BasicInfoStep(viewModel: CharacterCustomizationViewModel) {
     val description by viewModel.description.collectAsState()
     val backstory by viewModel.backstory.collectAsState()
     val greetingMessage by viewModel.greetingMessage.collectAsState()
+    val scenario by viewModel.scenario.collectAsState()
+    val alternateGreetings by viewModel.alternateGreetings.collectAsState()
+    val creator by viewModel.creator.collectAsState()
+    val characterVersion by viewModel.characterVersion.collectAsState()
+    val tags by viewModel.tags.collectAsState()
 
     Column(
         modifier = Modifier
@@ -340,59 +369,92 @@ fun BasicInfoStep(viewModel: CharacterCustomizationViewModel) {
             fontWeight = FontWeight.Bold
         )
 
-        OutlinedTextField(
-            value = name,
-            onValueChange = { viewModel.updateName(it) },
-            label = { Text("角色名称 *") },
-            placeholder = { Text("给你的角色起个名字") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                unfocusedTextColor = MaterialTheme.colorScheme.onSurface
+            V9PMTextField(
+                value = name,
+                onValueChange = viewModel::updateName,
+                label = "角色名称 *",
+                placeholder = "给你的角色起个名字",
+                modifier = Modifier.fillMaxWidth()
             )
-        )
 
-        OutlinedTextField(
-            value = description,
-            onValueChange = { viewModel.updateDescription(it) },
-            label = { Text("简短描述 *") },
-            placeholder = { Text("一句话介绍这个角色") },
-            modifier = Modifier.fillMaxWidth(),
-            maxLines = 2,
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                unfocusedTextColor = MaterialTheme.colorScheme.onSurface
+            V9PMTextField(
+                value = description,
+                onValueChange = viewModel::updateDescription,
+                label = "简短描述 *",
+                placeholder = "一句话介绍这个角色",
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = false,
+                maxLines = 2
             )
-        )
 
-        OutlinedTextField(
-            value = backstory,
-            onValueChange = { viewModel.updateBackstory(it) },
-            label = { Text("背景故事 *") },
-            placeholder = { Text("详细描述角色的背景、经历、性格等...") },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(200.dp),
-            maxLines = 10,
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                unfocusedTextColor = MaterialTheme.colorScheme.onSurface
+            V9PMTextField(
+                value = backstory,
+                onValueChange = viewModel::updateBackstory,
+                label = "背景故事 *",
+                placeholder = "详细描述角色的背景、经历、性格等...",
+                modifier = Modifier.fillMaxWidth().height(200.dp),
+                singleLine = false,
+                maxLines = 10
             )
-        )
 
-        OutlinedTextField(
-            value = greetingMessage,
-            onValueChange = { viewModel.updateGreetingMessage(it) },
-            label = { Text("问候语") },
-            placeholder = { Text("角色见到你时的第一句话") },
-            modifier = Modifier.fillMaxWidth(),
-            maxLines = 2,
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                unfocusedTextColor = MaterialTheme.colorScheme.onSurface
+            V9PMTextField(
+                value = greetingMessage,
+                onValueChange = viewModel::updateGreetingMessage,
+                label = "问候语",
+                placeholder = "角色见到你时的第一句话",
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = false,
+                maxLines = 2
             )
-        )
+
+            V9PMTextField(
+                value = scenario,
+                onValueChange = viewModel::updateScenario,
+                label = "当前场景",
+                placeholder = "你们正在什么地方、处于什么情境？",
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = false,
+                maxLines = 4
+            )
+
+            V9PMTextField(
+                value = alternateGreetings.joinToString("\n"),
+                onValueChange = { value ->
+                    viewModel.updateAlternateGreetings(value.lines().map(String::trim).filter(String::isNotBlank).take(5))
+                },
+                label = "备用问候语（可选）",
+                placeholder = "每行一条，最多 5 条",
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = false,
+                maxLines = 5
+            )
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                V9PMTextField(
+                    value = creator,
+                    onValueChange = viewModel::updateCreator,
+                    label = "作者（可选）",
+                    placeholder = "你的名字或昵称",
+                    modifier = Modifier.weight(1f)
+                )
+                V9PMTextField(
+                    value = characterVersion,
+                    onValueChange = viewModel::updateCharacterVersion,
+                    label = "版本",
+                    placeholder = "1.0",
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            V9PMTextField(
+                value = tags.joinToString(", "),
+                onValueChange = { value ->
+                    viewModel.updateTags(value.split(",", "，").map(String::trim).filter(String::isNotBlank).distinct().take(12))
+                },
+                label = "标签（可选）",
+                placeholder = "例如：科幻、温柔、冒险",
+                modifier = Modifier.fillMaxWidth()
+            )
 
         Text(
             "* 为必填项",
@@ -408,6 +470,13 @@ fun BasicInfoStep(viewModel: CharacterCustomizationViewModel) {
 @Composable
 fun PersonalityStep(viewModel: CharacterCustomizationViewModel) {
     val personality by viewModel.personality.collectAsState()
+    val naturalDescription by viewModel.naturalPersonalityDescription.collectAsState()
+    val rhythm by viewModel.rhythm.collectAsState()
+    var memoryPreferenceMenuOpen by remember { mutableStateOf(false) }
+    val memoryPreferenceOptions = listOf("普通记忆先问我", "自动记住日常偏好", "只记住共同经历", "低打扰模式")
+    val selectedMemoryPreference = personality.customTraits[
+        com.companion.cc.domain.model.PersonalityTraits.MEMORY_PREFERENCE_KEY
+    ].orEmpty().ifBlank { "普通记忆先问我" }
 
     Column(
         modifier = Modifier
@@ -428,6 +497,70 @@ fun PersonalityStep(viewModel: CharacterCustomizationViewModel) {
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurface
         )
+
+        OutlinedTextField(
+            value = naturalDescription,
+            onValueChange = viewModel::updateNaturalPersonalityDescription,
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("人格底色（用你自己的话描述）") },
+            placeholder = { Text("例如：慢热，熟悉以后会主动分享小事，嘴硬但很在意对方") },
+            minLines = 3,
+            maxLines = 6,
+            supportingText = { Text("这段话会影响表达和相处方式，不会把角色锁死成固定台词。") }
+        )
+
+        Box(modifier = Modifier.fillMaxWidth()) {
+            OutlinedTextField(
+                value = selectedMemoryPreference,
+                onValueChange = {},
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { memoryPreferenceMenuOpen = true },
+                readOnly = true,
+                label = { Text("记忆偏好") },
+                supportingText = { Text("决定这个角色整理记忆时更主动还是更克制，不会自动保存承诺或敏感内容。") },
+                trailingIcon = {
+                    IconButton(onClick = { memoryPreferenceMenuOpen = !memoryPreferenceMenuOpen }) {
+                        Icon(Icons.Default.ArrowDropDown, contentDescription = "选择记忆偏好")
+                    }
+                }
+            )
+            DropdownMenu(
+                expanded = memoryPreferenceMenuOpen,
+                onDismissRequest = { memoryPreferenceMenuOpen = false }
+            ) {
+                memoryPreferenceOptions.forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(option) },
+                        onClick = {
+                            viewModel.updateCustomPersonalityTrait(
+                                com.companion.cc.domain.model.PersonalityTraits.MEMORY_PREFERENCE_KEY,
+                                option
+                            )
+                            memoryPreferenceMenuOpen = false
+                        }
+                    )
+                }
+            }
+        }
+
+        listOf(
+            com.companion.cc.domain.character.CharacterNuanceKeys.LANGUAGE_HABITS to "例如：偶尔省略主语，熟悉后会轻轻吐槽",
+            com.companion.cc.domain.character.CharacterNuanceKeys.EXPRESSION_BOUNDARIES to "例如：不使用宝宝式称呼，不连续追问",
+            com.companion.cc.domain.character.CharacterNuanceKeys.RELATIONSHIP_DISTANCE to "例如：慢慢靠近，不会刚认识就过分亲密",
+            com.companion.cc.domain.character.CharacterNuanceKeys.CONFLICT_STYLE to "例如：先安静一下，被认真回应后才慢慢松动",
+            com.companion.cc.domain.character.CharacterNuanceKeys.PROACTIVE_HABITS to "例如：看到有趣的小店或天气变化时会想起对方"
+        ).forEach { (key, hint) ->
+            OutlinedTextField(
+                value = personality.customTraits[key].orEmpty(),
+                onValueChange = { viewModel.updateCustomPersonalityTrait(key, it) },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text(key) },
+                placeholder = { Text(hint) },
+                minLines = 2,
+                maxLines = 4
+            )
+        }
 
         PersonalitySlider(
             label = "开放性",
@@ -463,6 +596,21 @@ fun PersonalityStep(viewModel: CharacterCustomizationViewModel) {
             value = 1f - personality.neuroticism,
             onValueChange = { viewModel.updatePersonalityTrait("neuroticism", 1f - it) }
         )
+
+        Text("生活节奏与相处方式", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+        PersonalitySlider("日夜节奏", if (rhythm.wakeHour >= 9f) "偏夜间活跃" else "偏日间活跃", if (rhythm.wakeHour >= 9f) 0.85f else 0.35f) {
+            val night = it >= 0.6f
+            viewModel.updateRhythm(rhythm.copy(wakeHour = if (night) 10f else 7f, sleepHour = if (night) 2f else 22.5f))
+        }
+        PersonalitySlider("社交电量", "影响主动开口的底气，不是固定提醒", rhythm.socialBattery) {
+            viewModel.updateRhythm(rhythm.copy(socialBattery = it))
+        }
+        PersonalitySlider("记忆眷恋", "旧事停留多久，只在相关时自然想起", rhythm.memoryStickiness) {
+            viewModel.updateRhythm(rhythm.copy(memoryStickiness = it))
+        }
+        PersonalitySlider("情绪恢复", "从疲惫或不愉快中缓过来的速度", rhythm.recoverySpeed) {
+            viewModel.updateRhythm(rhythm.copy(recoverySpeed = it))
+        }
     }
 }
 
@@ -510,7 +658,13 @@ fun PersonalitySlider(
                 .fillMaxWidth()
                 .semantics {
                     contentDescription = "$label：${(value * 100).toInt()}%"
-                }
+                    stateDescription = "当前值 ${(value * 100).toInt()}%"
+                },
+            colors = SliderDefaults.colors(
+                thumbColor = MaterialTheme.colorScheme.primary,
+                activeTrackColor = MaterialTheme.colorScheme.primary,
+                inactiveTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+            )
         )
     }
 }

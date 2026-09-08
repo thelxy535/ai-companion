@@ -113,6 +113,21 @@ interface StatsDao {
     ): List<MessageEntity>
 
     @Query("""
+        SELECT * FROM messages
+        WHERE user_id = :userId
+          AND companion_id = :companionId
+        ORDER BY timestamp ASC, id ASC
+    """)
+    suspend fun getMessagesForCompanion(userId: String, companionId: String): List<MessageEntity>
+
+    @Query("""
+        SELECT * FROM messages
+        WHERE user_id = :userId
+        ORDER BY timestamp ASC, id ASC
+    """)
+    suspend fun getAllMessagesForUser(userId: String): List<MessageEntity>
+
+    @Query("""
         DELETE FROM messages
         WHERE user_id = :userId AND companion_id = :companionId
     """)
@@ -120,6 +135,7 @@ interface StatsDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMessages(messages: List<MessageEntity>)
+
 }
 
 data class CompanionStatRow(

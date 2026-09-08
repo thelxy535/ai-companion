@@ -112,8 +112,47 @@ internal object GlassTouchOptics {
 }
 
 /**
- * Route-scoped visual root. It renders a single controlled backdrop and
- * provides a companion-aware theme to child glass surfaces.
+ * Single application-owned backdrop. Route scenes provide theme metadata only;
+ * this host keeps the full-screen layer alive while content transitions.
+ */
+@Composable
+fun AppBackdropHost(
+    route: VisualRoute,
+    companionId: String? = null,
+    modifier: Modifier = Modifier,
+    content: @Composable BoxScope.() -> Unit
+) {
+    val rootTheme = LocalVisualTheme.current
+    val customization = LocalVisualCustomization.current
+    val effectTier = rootTheme.effectTier
+    val backdrop = remember(
+        rootTheme.tokens.backdrop.isDark,
+        route,
+        companionId,
+        customization,
+        effectTier
+    ) {
+        VisualThemeResolver.resolve(
+            isDark = rootTheme.tokens.backdrop.isDark,
+            route = route,
+            companionId = companionId,
+            customization = customization,
+            effectTier = effectTier
+        ).tokens.backdrop
+    }
+
+    Box(modifier = modifier.fillMaxSize()) {
+        AdaptiveBackdropLayer(
+            backdrop = backdrop,
+            modifier = Modifier.matchParentSize()
+        )
+        content()
+    }
+}
+
+/**
+ * Route-scoped visual root. It provides a companion-aware theme to child glass
+ * surfaces while the application shell owns the full-screen backdrop.
  */
 @Composable
 fun VisualScene(
@@ -152,16 +191,17 @@ fun VisualScene(
             typography = typography,
             shapes = shapes
         ) {
-            Box(
-                modifier = modifier
-                    .fillMaxSize()
-                    .onGloballyPositioned(sceneState::update)
+            // 场景级默认文字色：未显式给色的 Text 跟随路由主题（V9PM）。
+            androidx.compose.runtime.CompositionLocalProvider(
+                androidx.compose.material3.LocalContentColor provides routeTheme.tokens.contentPrimary
             ) {
-                AdaptiveBackdropLayer(
-                    backdrop = routeTheme.tokens.backdrop,
-                    modifier = Modifier.matchParentSize()
-                )
-                content()
+                Box(
+                    modifier = modifier
+                        .fillMaxSize()
+                        .onGloballyPositioned(sceneState::update)
+                ) {
+                    content()
+                }
             }
         }
     }
@@ -173,10 +213,18 @@ fun AdaptiveBackdropLayer(
     backdrop: BackdropSpec,
     modifier: Modifier = Modifier
 ) {
-    // Route changes use the target backdrop immediately so the previous scene
-    // cannot flash through during navigation.
-    val startColor = backdrop.baseStart
-    val endColor = backdrop.baseEnd
+    // Theme toggle: 800ms ease matching the global aurora rhythm.
+    // Route navigation lands on the new color immediately — animateColorAsState snaps
+    // when recomposition outpaces the animation, which is the correct nav behavior.
+    val animSpec = androidx.compose.animation.core.tween<androidx.compose.ui.graphics.Color>(
+        800, easing = androidx.compose.animation.core.LinearEasing
+    )
+    val startColor by androidx.compose.animation.animateColorAsState(
+        backdrop.baseStart, animSpec, label = "backdropStart"
+    )
+    val endColor by androidx.compose.animation.animateColorAsState(
+        backdrop.baseEnd, animSpec, label = "backdropEnd"
+    )
 
     Box(modifier = modifier) {
         Canvas(modifier = Modifier.fillMaxSize()) {
@@ -508,7 +556,8 @@ fun GlassBottomDock(
     content: @Composable BoxScope.() -> Unit
 ) = GlassSurface(
     modifier = modifier,
-    shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
+    // V9PM：Dock 四角统一连续大 R（原来只有顶部两角 26dp，底部边缘不一致）
+    shape = com.companion.cc.ui.designsystem.smoothCorner(34.dp),
     contentPadding = contentPadding,
     useStrongFill = true,
     content = content

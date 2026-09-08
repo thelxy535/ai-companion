@@ -12,15 +12,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
@@ -28,6 +24,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.companion.cc.ui.components.UtilityDivider
+import com.companion.cc.ui.components.V9PMActionButton
+import com.companion.cc.ui.components.V9PMTopBar
 import com.companion.cc.ui.components.UtilitySection
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -41,15 +39,10 @@ fun MemoryRetrievalTraceScreen(
     LaunchedEffect(companionId, traceId) { viewModel.load(companionId, traceId) }
     val state = viewModel.state
     Scaffold(topBar = {
-        TopAppBar(
-            modifier = Modifier.padding(top = 44.dp),
+        V9PMTopBar(
             title = { Text("记忆召回记录", fontWeight = FontWeight.SemiBold) },
-            navigationIcon = {
-                IconButton(onClick = onNavigateBack) {
-                    Icon(Icons.Default.ArrowBack, "返回")
-                }
-            },
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = androidx.compose.ui.graphics.Color.Transparent)
+            onNavigateBack = onNavigateBack,
+            modifier = Modifier.padding(top = 44.dp)
         )
     }) { padding ->
         LazyColumn(
@@ -84,14 +77,21 @@ fun MemoryRetrievalTraceScreen(
                             Text(selection.explanation)
                             UtilityDivider()
                         }
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(onClick = {
-                                viewModel.submitFeedback(selection.nodeId, "positive")
-                            }) { Text("有帮助") }
-                            OutlinedButton(onClick = {
-                                viewModel.submitFeedback(selection.nodeId, "negative")
-                            }) { Text("无帮助") }
-                        }
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                V9PMActionButton(
+                                    label = "有帮助",
+                                    onClick = { viewModel.submitFeedback(selection.nodeId, "positive") },
+                                    modifier = Modifier.weight(1f),
+                                    height = 40.dp
+                                )
+                                V9PMActionButton(
+                                    label = "无帮助",
+                                    onClick = { viewModel.submitFeedback(selection.nodeId, "negative") },
+                                    modifier = Modifier.weight(1f),
+                                    height = 40.dp,
+                                    destructive = true
+                                )
+                            }
                     }
                 }
             }

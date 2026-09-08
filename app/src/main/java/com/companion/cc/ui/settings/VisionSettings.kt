@@ -17,6 +17,8 @@ import com.companion.cc.domain.model.VisionServiceMode
 import com.companion.cc.ui.components.UtilityDivider
 import com.companion.cc.ui.components.UtilitySection
 import com.companion.cc.ui.theme.LocalVisualTheme
+import com.companion.cc.ui.components.V9PMActionButton
+import com.companion.cc.ui.components.V9PMTextField
 
 @Composable
 internal fun VisionApiConfigSection(
@@ -92,25 +94,22 @@ private fun GeminiCredentials(
     onSave: () -> Unit,
     isSaved: Boolean
 ) {
-    OutlinedTextField(
+    V9PMTextField(
         value = apiKey,
         onValueChange = onApiKeyChange,
         modifier = Modifier.fillMaxWidth(),
-        label = { Text("Gemini API Key") },
-        placeholder = { Text("粘贴您的 Gemini API Key") },
-        leadingIcon = { Icon(Icons.Default.Key, contentDescription = null) },
-        singleLine = true
+        label = "Gemini API Key",
+        placeholder = "粘贴您的 Gemini API Key",
+        leadingIcon = Icons.Default.Key
     )
     Spacer(Modifier.height(12.dp))
-    Button(
+    V9PMActionButton(
+        label = "保存 Gemini API Key",
         onClick = onSave,
         modifier = Modifier.fillMaxWidth(),
+        icon = Icons.Default.Check,
         enabled = apiKey.isNotBlank()
-    ) {
-        Icon(Icons.Default.Check, contentDescription = null)
-        Spacer(Modifier.width(8.dp))
-        Text("保存 Gemini API Key")
-    }
+    )
     AnimatedVisibility(isSaved) {
         Row(
             modifier = Modifier.padding(top = 12.dp),
@@ -149,36 +148,28 @@ private fun SelfHostedPairing(
             Text("已连接到我的视觉服务器", color = LocalVisualTheme.current.tokens.status.success)
         }
         Spacer(Modifier.height(12.dp))
-        OutlinedButton(onClick = onUnpair, modifier = Modifier.fillMaxWidth()) {
-            Text("取消配对")
-        }
+        V9PMActionButton(
+            label = "取消配对",
+            onClick = onUnpair,
+            modifier = Modifier.fillMaxWidth(),
+            destructive = true
+        )
     } else {
-        OutlinedTextField(
+        V9PMTextField(
             value = pairingCode,
             onValueChange = onPairingCodeChange,
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("一次性配对码") },
-            placeholder = { Text("在服务器终端生成后输入") },
-            leadingIcon = { Icon(Icons.Default.Key, contentDescription = null) },
-            singleLine = true
+            label = "一次性配对码",
+            placeholder = "在服务器终端生成后输入",
+            leadingIcon = Icons.Default.Key
         )
         Spacer(Modifier.height(12.dp))
-        Button(
+        V9PMActionButton(
+            label = if (isPairing) "正在配对..." else "连接我的视觉服务器",
             onClick = onPair,
             modifier = Modifier.fillMaxWidth(),
+            icon = if (isPairing) null else Icons.Default.Link,
             enabled = pairingCode.isNotBlank() && !isPairing
-        ) {
-            if (isPairing) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(20.dp),
-                    strokeWidth = 2.dp,
-                    color = MaterialTheme.colorScheme.onPrimary
-                )
-            } else {
-                Icon(Icons.Default.Link, contentDescription = null)
-            }
-            Spacer(Modifier.width(8.dp))
-            Text(if (isPairing) "正在配对..." else "连接我的视觉服务器")
-        }
+        )
     }
 }

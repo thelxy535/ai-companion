@@ -2,20 +2,25 @@ package com.companion.cc.ui.splash
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.companion.cc.ui.theme.GlassEffectTier
 import com.companion.cc.ui.theme.LocalVisualTheme
+import com.companion.cc.R
 import kotlinx.coroutines.delay
 
 /**
@@ -35,27 +40,24 @@ fun SplashScreen(
 ) {
     var animationPhase by remember { mutableIntStateOf(0) }
     val visualTheme = LocalVisualTheme.current
-    val backgroundColors = listOf(
-        visualTheme.tokens.backdrop.baseStart,
-        visualTheme.tokens.backdrop.baseEnd
-    )
 
     LaunchedEffect(Unit) {
         if (splashDurationMillis(visualTheme.effectTier) == 0L) {
             onNavigateToHome()
             return@LaunchedEffect
         }
-        // 阶段1: 淡入 (0-300ms)
+        val duration = splashDurationMillis(visualTheme.effectTier)
+        // 阶段1: 核心出现
         animationPhase = 1
-        delay(300)
+        delay((duration * 0.34f).toLong())
 
-        // 阶段2: 呼吸停留 (300-500ms)
+        // 阶段2: 光环稳定
         animationPhase = 2
-        delay(200)
+        delay((duration * 0.28f).toLong())
 
-        // 阶段3: 淡出 (500-800ms)
+        // 阶段3: 轻微转场
         animationPhase = 3
-        delay(300)
+        delay((duration * 0.38f).toLong())
 
         // 进入首页
         onNavigateToHome()
@@ -64,15 +66,14 @@ fun SplashScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(backgroundColors)
-            ),
+            // Let AppBackdropHost remain visible so Splash and Home share one canvas.
+            .background(androidx.compose.ui.graphics.Color.Transparent),
         contentAlignment = Alignment.Center
     ) {
         // 品牌符号动画
         AnimatedBrandIcon(
             phase = animationPhase,
-        allowDecorativeMotion = visualTheme.effectTier != GlassEffectTier.STEADY
+            allowDecorativeMotion = visualTheme.effectTier != GlassEffectTier.STEADY
         )
     }
 }
@@ -85,22 +86,25 @@ private fun AnimatedBrandIcon(
     phase: Int,
     allowDecorativeMotion: Boolean
 ) {
-    // 缩放动画
+    val transitionDuration = when (phase) {
+        1 -> 260
+        2 -> 180
+        else -> 280
+    }
     val scale by animateFloatAsState(
         targetValue = when (phase) {
-            0 -> 0.8f      // 初始缩小
-            1 -> 1.0f      // 淡入到正常
-            2 -> 1.05f     // 呼吸放大
-            else -> 1.1f   // 淡出略放大
+            0 -> 0.82f
+            1 -> 1.0f
+            2 -> 1.035f
+            else -> 1.08f
         },
         animationSpec = tween(
-            durationMillis = 300,
+            durationMillis = transitionDuration,
             easing = FastOutSlowInEasing
         ),
         label = "icon_scale"
     )
 
-    // 透明度动画
     val alpha by animateFloatAsState(
         targetValue = when (phase) {
             0 -> 0f        // 初始透明
@@ -108,7 +112,7 @@ private fun AnimatedBrandIcon(
             else -> 0f     // 淡出
         },
         animationSpec = tween(
-            durationMillis = 300,
+            durationMillis = transitionDuration,
             easing = FastOutSlowInEasing
         ),
         label = "icon_alpha"
@@ -133,11 +137,22 @@ private fun AnimatedBrandIcon(
             .scale(scale * if (phase == 2) breatheScale else 1f),
         contentAlignment = Alignment.Center
     ) {
-        // 简洁的品牌符号
-        Text(
-            text = "💬",
-            fontSize = 72.sp,
-            modifier = Modifier.graphicsLayer(alpha = alpha)
+        // Use the actual launcher mark so the opening moment and home screen share one identity.
+        Image(
+            // Compose cannot load an adaptive mipmap as a Painter; use its vector
+            // foreground while the system surfaces keep the full adaptive icon.
+            painter = painterResource(R.drawable.ic_launcher_sylora_blue_foreground),
+            contentDescription = null,
+            modifier = Modifier
+                .size(112.dp)
+                .graphicsLayer {
+                    this.alpha = alpha
+                    translationY = when (phase) {
+                        0 -> 18f
+                        3 -> -10f
+                        else -> 0f
+                    }
+                }
         )
     }
 }

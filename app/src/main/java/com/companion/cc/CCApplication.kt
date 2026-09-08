@@ -14,6 +14,9 @@ import com.companion.cc.domain.character.CharacterCleanupProcessor
 import com.companion.cc.domain.character.CharacterCleanupWorker
 import com.companion.cc.domain.identity.CurrentUserProvider
 import com.companion.cc.domain.message.ProactiveMessageWorker
+import com.companion.cc.domain.memory.NarrativeEvolutionWorker
+import com.companion.cc.domain.memory.ReflectionWorker
+import com.companion.cc.util.NotificationHelper
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -37,8 +40,11 @@ class CCApplication : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
+        NotificationHelper.createNotificationChannel(this)
         enqueueCleanupWork()
         enqueueProactiveWork()
+        enqueueReflectionWork()
+        enqueueNarrativeEvolutionWork()
         applicationScope.launch {
             runCatching { currentUserProvider.requireUserId() }
                 .getOrNull()
@@ -74,10 +80,39 @@ class CCApplication : Application(), Configuration.Provider {
         )
     }
 
+    private fun enqueueReflectionWork() {
+        val request = PeriodicWorkRequestBuilder<ReflectionWorker>(15, TimeUnit.MINUTES)
+            .setBackoffCriteria(
+                BackoffPolicy.EXPONENTIAL,
+                15,
+                TimeUnit.MINUTES
+            )
+            .build()
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            REFLECTION_WORK_NAME,
+            ExistingPeriodicWorkPolicy.KEEP,
+            request
+        )
+    }
+
+    private fun enqueueNarrativeEvolutionWork() {
+        // V9PM 深度②：每日叙事自演化（无新对话时 Worker 内部快速空转）
+        val request = PeriodicWorkRequestBuilder<NarrativeEvolutionWorker>(24, TimeUnit.HOURS)
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.MINUTES)
+            .build()
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            NARRATIVE_EVOLUTION_WORK_NAME,
+            ExistingPeriodicWorkPolicy.KEEP,
+            request
+        )
+    }
+
     private companion object {
         const val CLEANUP_WORK_NAME = "character-cleanup"
         const val CLEANUP_INITIAL_DELAY_MINUTES = 15L
         const val CLEANUP_BACKOFF_MINUTES = 15L
         const val PROACTIVE_WORK_NAME = "proactive-message"
+        const val REFLECTION_WORK_NAME = "memory-reflection"
+        const val NARRATIVE_EVOLUTION_WORK_NAME = "narrative-evolution"
     }
 }

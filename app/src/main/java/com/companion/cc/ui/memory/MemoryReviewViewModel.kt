@@ -11,24 +11,34 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
+import com.companion.cc.domain.memory.ReviewInboxGroup
+import com.companion.cc.domain.memory.ReviewInboxPolicy
 
 sealed interface MemoryReviewState {
     data object Loading : MemoryReviewState
-    data class Content(val reviews: List<MemoryReviewEntity>) : MemoryReviewState
+    data class Content(
+        val reviews: List<MemoryReviewEntity>,
+        val deferred: List<MemoryReviewEntity> = emptyList()
+    ) : MemoryReviewState
     data class Error(val previous: List<MemoryReviewEntity>, val message: String) : MemoryReviewState
 }
 
 @HiltViewModel
 class MemoryReviewViewModel @Inject constructor(
     private val repository: MemoryRepository,
-    private val currentUserProvider: CurrentUserProvider
+    private val currentUserProvider: CurrentUserProvider,
+    private val commitmentRepository: com.companion.cc.domain.commitment.CommitmentRepository
 ) : ViewModel() {
     private val _state = MutableStateFlow<MemoryReviewState>(MemoryReviewState.Loading)
     val state: StateFlow<MemoryReviewState> = _state.asStateFlow()
     private var scopeKey: String? = null
     private var observeJob: Job? = null
+    private val mutationMutex = Mutex()
 
     fun setCompanion(companionId: String) {
         viewModelScope.launch {
@@ -47,17 +57,71 @@ class MemoryReviewViewModel @Inject constructor(
 
     fun accept(review: MemoryReviewEntity, subjectRole: String = "user", subjectKey: String = "user") {
         viewModelScope.launch {
-            val scope = scopeKey ?: run {
-                _state.value = MemoryReviewState.Error(currentItems(), "未选择角色")
-                return@launch
+            runMutation { acceptOne(review, subjectRole, subjectKey) }
+        }
+    }
+
+    fun acceptGroup(group: ReviewInboxGroup) = acceptAll(listOf(group))
+    fun rejectGroup(group: ReviewInboxGroup) = rejectAll(listOf(group))
+    fun deferGroup(group: ReviewInboxGroup) = deferAll(listOf(group))
+
+    fun acceptAll(groups: List<ReviewInboxGroup>) = batch(groups.flatMap { it.items }.filter(ReviewInboxPolicy::isBatchable)) {
+        acceptOne(it, "user", "user")
+    }
+
+    fun rejectAll(groups: List<ReviewInboxGroup>) = batch(groups.flatMap { it.items }.filter(ReviewInboxPolicy::isBatchable)) {
+        resolveOne(it, "rejected", "user rejected")
+    }
+
+    fun deferAll(groups: List<ReviewInboxGroup>) = batch(groups.flatMap { it.items }.filter(ReviewInboxPolicy::isBatchable)) {
+        resolveOne(it, "deferred", "deferred by user")
+    }
+
+    private fun batch(reviews: List<MemoryReviewEntity>, action: suspend (MemoryReviewEntity) -> Unit) {
+        viewModelScope.launch {
+            runMutation {
+                reviews.forEach { action(it) }
             }
-            repository.acceptReview(
-                scopeKey = scope,
-                reviewId = review.id,
-                subjectRole = subjectRole,
-                subjectKey = subjectKey
-            )
-                .onFailure { error -> _state.value = MemoryReviewState.Error(currentItems(), error.message ?: "无法接受记忆") }
+        }
+    }
+
+    private suspend fun runMutation(action: suspend () -> Unit) {
+        mutationMutex.withLock {
+            runCatching { action() }
+                .onFailure { error ->
+                    _state.value = MemoryReviewState.Error(
+                        currentItems(),
+                        error.message ?: "无法更新记忆收件箱"
+                    )
+                }
+        }
+    }
+
+    private suspend fun acceptOne(
+        review: MemoryReviewEntity,
+        subjectRole: String,
+        subjectKey: String
+    ) {
+        val scope = scopeKey ?: run {
+            _state.value = MemoryReviewState.Error(currentItems(), "未选择角色")
+            return
+        }
+        val isNarrative = review.kind == com.companion.cc.domain.memory.NarrativeKinds.RELATIONSHIP
+        repository.acceptReview(
+            scopeKey = scope,
+            reviewId = review.id,
+            subjectRole = if (isNarrative) "relationship" else subjectRole,
+            subjectKey = if (isNarrative) "pair" else subjectKey
+        ).getOrThrow().also {
+            if (review.kind == "commitment") {
+                val parts = scope.split(":")
+                if (parts.size >= 4 && parts[0] == "user") {
+                    commitmentRepository.create(
+                        userId = parts[1], characterId = parts[3], promise = review.content,
+                        dueAt = System.currentTimeMillis() + 24L * 3_600_000L
+                    )
+                }
+            }
         }
     }
 
@@ -69,29 +133,38 @@ class MemoryReviewViewModel @Inject constructor(
         resolve(review, "deferred", "deferred by user")
     }
 
+    fun restore(review: MemoryReviewEntity) {
+        viewModelScope.launch {
+            runMutation {
+                val scope = requireNotNull(scopeKey) { "未选择角色" }
+                repository.restoreReview(scope, review.id).getOrThrow()
+            }
+        }
+    }
+
     private fun resolve(review: MemoryReviewEntity, status: String, note: String) {
         viewModelScope.launch {
-            val scope = scopeKey ?: run {
-                _state.value = MemoryReviewState.Error(currentItems(), "未选择角色")
-                return@launch
-            }
-            repository.resolveReview(
-                scopeKey = scope,
-                reviewId = review.id,
-                status = status,
-                note = note
-            )
-                .onFailure { error -> _state.value = MemoryReviewState.Error(currentItems(), error.message ?: "无法更新审核状态") }
+            runMutation { resolveOne(review, status, note) }
         }
+    }
+
+    private suspend fun resolveOne(review: MemoryReviewEntity, status: String, note: String) {
+        val scope = requireNotNull(scopeKey) { "未选择角色" }
+        repository.resolveReview(scope, review.id, status, note).getOrThrow()
     }
 
     private fun observe() {
         val scope = scopeKey ?: return
         observeJob?.cancel()
         observeJob = viewModelScope.launch {
-            repository.observePendingReviews(scope)
+            // 打开审核页时，延后超过冷却期的候选自动回到待审核队列
+            runCatching { repository.restoreDueDeferredReviews(scope) }
+            combine(
+                repository.observePendingReviews(scope),
+                repository.observeDeferredReviews(scope)
+            ) { pending, deferred -> MemoryReviewState.Content(pending, deferred) }
                 .catch { error -> _state.value = MemoryReviewState.Error(currentItems(), error.message ?: "无法加载审核列表") }
-                .collect { reviews -> _state.value = MemoryReviewState.Content(reviews) }
+                .collect { _state.value = it }
         }
     }
 

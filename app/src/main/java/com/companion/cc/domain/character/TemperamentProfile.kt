@@ -1,6 +1,7 @@
 package com.companion.cc.domain.character
 
 import com.companion.cc.domain.model.Attitude
+import com.companion.cc.domain.model.PersonalityTraits
 import com.companion.cc.domain.model.EmotionalState
 import com.companion.cc.domain.model.Mood
 
@@ -23,10 +24,33 @@ data class TemperamentProfile(
     val grudgeDecay: Float = 0.5f,
     val clinginess: Float = 0.5f,
     val expressiveness: Float = 0.5f,
+    /** 自发分享和把生活带进对话的倾向。 */
+    val shareImpulse: Float = 0.5f,
+    /** 担心打扰对方、需要更多安全感才开口的程度。 */
+    val interruptionCost: Float = 0.5f,
 ) {
     companion object {
         /** 默认脾气档位（provisional，后续由角色配置/创建页覆盖） */
         val DEFAULT = TemperamentProfile()
+
+        /** V9 造人：Big Five 人格 → 脾气五参（确定性推导，零存储） */
+        fun fromPersonality(t: PersonalityTraits): TemperamentProfile {
+            val custom = t.customTraits.values.joinToString(" ").lowercase()
+            val reserved = custom.score("慢热", "安静", "内向", "不喜欢被打扰", "不喜欢被连续追问")
+            val sharing = custom.score("主动分享", "喜欢分享", "想到什么就说", "话多", "健谈")
+            return TemperamentProfile(
+                sensitivity = (t.neuroticism * 0.85f + 0.05f).coerceIn(0f, 1f),
+                stubbornness = ((1f - t.agreeableness) * 0.55f + t.neuroticism * 0.45f).coerceIn(0f, 1f),
+                grudgeDecay = (t.agreeableness * 0.65f + (1f - t.neuroticism) * 0.35f).coerceIn(0f, 1f),
+                clinginess = (t.extraversion * 0.6f + t.neuroticism * 0.4f).coerceIn(0f, 1f),
+                expressiveness = (t.extraversion * 0.55f + t.openness * 0.45f - reserved * 0.25f + sharing * 0.15f).coerceIn(0f, 1f),
+                shareImpulse = (t.extraversion * 0.5f + t.openness * 0.25f + sharing * 0.35f - reserved * 0.2f).coerceIn(0f, 1f),
+                interruptionCost = (0.45f + reserved * 0.4f - sharing * 0.2f - t.extraversion * 0.2f).coerceIn(0f, 1f),
+            )
+        }
+
+        private fun String.score(vararg markers: String): Float =
+            markers.count { contains(it) }.toFloat().coerceAtMost(2f) / 2f
     }
 }
 
@@ -82,6 +106,15 @@ object TemperamentDirective {
         if (t.stubbornness >= 0.6f) traits.add("嘴硬，心里软了也不轻易承认")
         if (t.grudgeDecay <= 0.35f) traits.add("气性大，之前的不愉快还没完全过去")
         if (t.expressiveness >= 0.65f) traits.add("表达欲强，喜欢展开说")
+        if (t.expressiveness <= 0.35f || t.interruptionCost >= 0.7f) {
+            traits.add("慢热克制，不会为了填满沉默而不断说话；需要时可以只陪着对方")
+        }
+        if (t.shareImpulse >= 0.7f) {
+            traits.add("容易把自己的小事和联想到的东西带进对话，但不要像汇报行程")
+        }
+        if (t.interruptionCost >= 0.7f) {
+            traits.add("会在意是否打扰对方，主动时更轻、更试探")
+        }
         return if (traits.isEmpty()) null else "- 性格底色：" + traits.joinToString("；")
     }
 }

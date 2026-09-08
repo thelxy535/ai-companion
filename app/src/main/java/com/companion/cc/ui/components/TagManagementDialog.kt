@@ -23,9 +23,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.companion.cc.data.local.entity.TagEntity
+import com.companion.cc.ui.theme.GlassDialogSurface
 import com.companion.cc.ui.theme.LocalVisualTheme
 import com.companion.cc.ui.theme.TagColorAdapter
 import java.util.UUID
+import com.companion.cc.ui.components.DialogEnterMotion
 
 /**
  * 标签选择对话框
@@ -45,12 +47,12 @@ fun TagSelectionDialog(
     var showCreateDialog by remember { mutableStateOf(false) }
 
     Dialog(onDismissRequest = onDismiss) {
-        Surface(
+        com.companion.cc.ui.components.DialogEnterMotion {
+        GlassDialogSurface(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(max = 500.dp),
-            shape = RoundedCornerShape(16.dp),
-            tonalElevation = 2.dp
+            shape = com.companion.cc.ui.designsystem.smoothCorner(28.dp)
         ) {
             Column(
                 modifier = Modifier.padding(16.dp)
@@ -66,9 +68,7 @@ fun TagSelectionDialog(
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "关闭")
-                    }
+                    V9PMIconButton(Icons.Default.Close, "关闭", onDismiss, size = 42.dp, iconSize = 18.dp)
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -109,24 +109,13 @@ fun TagSelectionDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    OutlinedButton(
-                        onClick = { showCreateDialog = true },
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("新建标签")
-                    }
+                    V9PMActionButton(label = "新建标签", onClick = { showCreateDialog = true }, modifier = Modifier.weight(1f), height = 40.dp)
 
-                    OutlinedButton(
-                        onClick = onManageTags,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text("管理标签")
-                    }
+                    V9PMActionButton(label = "管理标签", onClick = onManageTags, modifier = Modifier.weight(1f), height = 40.dp)
                 }
             }
         }
+            }
     }
 
     // 创建标签对话框
@@ -207,11 +196,11 @@ fun CreateTagDialog(
     var selectedColor by remember { mutableStateOf(tagColors[0]) }
 
     Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            tonalElevation = 2.dp
-        ) {
+        com.companion.cc.ui.components.DialogEnterMotion {
+                GlassDialogSurface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = com.companion.cc.ui.designsystem.smoothCorner(28.dp)
+                ) {
             Column(
                 modifier = Modifier.padding(16.dp)
             ) {
@@ -224,12 +213,12 @@ fun CreateTagDialog(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // 标签名称
-                OutlinedTextField(
+                V9PMTextField(
                     value = tagName,
                     onValueChange = { tagName = it },
-                    label = { Text("标签名称") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
+                    label = "标签名称",
+                    placeholder = "输入标签名称",
+                    modifier = Modifier.fillMaxWidth()
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -261,25 +250,27 @@ fun CreateTagDialog(
                 // 按钮
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    TextButton(onClick = onDismiss) {
-                        Text("取消")
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Button(
+                    V9PMActionButton(
+                        label = "取消",
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f),
+                        height = 40.dp
+                    )
+                    V9PMActionButton(
+                        label = "创建",
                         onClick = {
-                            if (tagName.isNotBlank()) {
-                                onCreate(tagName.trim(), selectedColor)
-                            }
+                            if (tagName.isNotBlank()) onCreate(tagName.trim(), selectedColor)
                         },
-                        enabled = tagName.isNotBlank()
-                    ) {
-                        Text("创建")
-                    }
+                        enabled = tagName.isNotBlank(),
+                        modifier = Modifier.weight(1f),
+                        height = 40.dp
+                    )
                 }
             }
         }
+            }
     }
 }
 
@@ -326,12 +317,12 @@ fun TagManagementDialog(
     var showCreateDialog by remember { mutableStateOf(false) }
 
     Dialog(onDismissRequest = onDismiss) {
-        Surface(
+        com.companion.cc.ui.components.DialogEnterMotion {
+        GlassDialogSurface(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(max = 500.dp),
-            shape = RoundedCornerShape(16.dp),
-            tonalElevation = 2.dp
+            shape = com.companion.cc.ui.designsystem.smoothCorner(28.dp)
         ) {
             Column(
                 modifier = Modifier.padding(16.dp)
@@ -347,9 +338,7 @@ fun TagManagementDialog(
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "关闭")
-                    }
+                    V9PMIconButton(Icons.Default.Close, "关闭", onDismiss, size = 42.dp, iconSize = 18.dp)
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -384,16 +373,16 @@ fun TagManagementDialog(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // 新建按钮
-                Button(
+                V9PMActionButton(
+                    label = "新建标签",
+                    icon = Icons.Default.Add,
                     onClick = { showCreateDialog = true },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("新建标签")
-                }
+                    modifier = Modifier.fillMaxWidth(),
+                    height = 40.dp
+                )
             }
         }
+            }
     }
 
     if (showCreateDialog) {
@@ -437,13 +426,14 @@ private fun TagManagementItem(
                 modifier = Modifier.weight(1f)
             )
 
-            IconButton(onClick = onDelete) {
-                Icon(
-                    imageVector = Icons.Default.Delete,
-                    contentDescription = "删除标签",
-                    tint = MaterialTheme.colorScheme.error
-                )
-            }
+            V9PMIconButton(
+                icon = Icons.Default.Delete,
+                contentDescription = "删除标签",
+                onClick = onDelete,
+                size = 42.dp,
+                iconSize = 18.dp,
+                tint = MaterialTheme.colorScheme.error
+            )
         }
 }
 

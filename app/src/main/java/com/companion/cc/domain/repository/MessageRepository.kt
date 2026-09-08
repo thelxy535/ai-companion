@@ -2,6 +2,7 @@ package com.companion.cc.domain.repository
 
 import com.companion.cc.domain.model.Message
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 
 interface MessageRepository {
     fun getMessages(
@@ -11,10 +12,46 @@ interface MessageRepository {
         offset: Int = 0
     ): Flow<List<Message>>
 
+    /**
+     * 取最新的 limit 条消息（时间升序返回）。
+     * 聊天页必须用这个：旧的 getMessages 是"最旧的 N 条"，
+     * 消息数超过 limit 后新消息会落在窗口外导致聊天不可见。
+     */
+    fun getLatestMessages(
+        userId: String,
+        companionId: String,
+        limit: Int = 50
+    ): Flow<List<Message>> = getMessages(userId, companionId, limit, 0)
+
+    /** Reads a consistent snapshot for request construction, independent of the UI Flow. */
+    suspend fun getLatestMessagesOnce(
+        userId: String,
+        companionId: String,
+        limit: Int = 100
+    ): List<Message> = getLatestMessages(userId, companionId, limit).first()
+
+    suspend fun getProactiveMessagesOnce(
+        userId: String,
+        companionId: String
+    ): List<Message> = emptyList()
+
+    suspend fun getAllMessagesOnce(
+        userId: String,
+        companionId: String
+    ): List<Message> = getMessages(userId, companionId, limit = Int.MAX_VALUE).first()
+
+    suspend fun searchMessagesOnce(
+        userId: String,
+        companionId: String?,
+        query: String
+    ): List<Message> = searchMessages(userId, companionId, query).first()
+
     fun getAllMessages(userId: String): Flow<List<Message>>
 
     suspend fun saveMessage(message: Message)
     suspend fun saveMessages(messages: List<Message>)
+
+    suspend fun getLatestCompanionId(userId: String): String?
 
     suspend fun getMessageCount(userId: String): Int
 

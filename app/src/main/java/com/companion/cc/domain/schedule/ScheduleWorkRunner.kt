@@ -14,7 +14,12 @@ class ScheduleWorkRunner(
         return try {
             loadDue(now).forEach { schedule ->
                 execute(schedule)
-                val status = if (schedule.recurrence == "ONCE") "COMPLETED" else "ACTIVE"
+                // 承诺类（prompt 以【承诺】开头）执行后标记 FULFILLED，其余沿用原语义
+                val status = when {
+                    schedule.prompt.startsWith("【承诺】") -> "FULFILLED"
+                    schedule.recurrence == "ONCE" -> "COMPLETED"
+                    else -> "ACTIVE"
+                }
                 val nextRunAt = if (schedule.recurrence == "DAILY") {
                     maxOf(schedule.nextRunAt, now) + 86_400_000L
                 } else {

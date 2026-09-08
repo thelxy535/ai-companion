@@ -37,7 +37,11 @@ class MemoryReviewViewModelTest {
                     now = any()
                 )
             ).thenReturn(Result.success("node:review"))
-            val viewModel = MemoryReviewViewModel(repository, currentUserProvider)
+            val viewModel = MemoryReviewViewModel(
+                repository,
+                currentUserProvider,
+                mock<com.companion.cc.domain.commitment.CommitmentRepository>()
+            )
             val review = MemoryReviewEntity(
                 id = "review-1",
                 scopeKey = "user:user-1:companion:character-1",

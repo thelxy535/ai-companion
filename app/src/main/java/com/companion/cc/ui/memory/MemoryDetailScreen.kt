@@ -1,6 +1,7 @@
 package com.companion.cc.ui.memory
 
 import com.companion.cc.ui.designsystem.auroraScreenBackground
+import com.companion.cc.ui.components.V9PMTopBar
 import com.companion.cc.ui.theme.LocalVisualTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -15,13 +16,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -42,6 +39,7 @@ import com.companion.cc.data.local.repository.MemoryRepository
 import com.companion.cc.domain.identity.CurrentUserProvider
 import com.companion.cc.domain.memory.MemoryScopeKey
 import com.companion.cc.ui.components.UtilityDivider
+import com.companion.cc.ui.components.V9PMActionButton
 import com.companion.cc.ui.components.UtilitySection
 import com.companion.cc.ui.theme.rememberTactileAction
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -49,6 +47,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import androidx.compose.material3.MaterialTheme
 
 data class MemoryDetailState(
     val node: MemoryNodeEntity? = null,
@@ -176,18 +175,14 @@ fun MemoryDetailScreen(
     Scaffold(
         modifier = Modifier.auroraScreenBackground(LocalVisualTheme.current.tokens.backdrop.isDark),
         topBar = {
-            TopAppBar(
-                modifier = Modifier.padding(top = 44.dp),
+            V9PMTopBar(
                 title = { Text("记忆详情", fontWeight = FontWeight.SemiBold) },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, "返回")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                onNavigateBack = onNavigateBack,
+                modifier = Modifier.padding(top = 44.dp)
             )
         },
-        containerColor = Color.Transparent
+        containerColor = Color.Transparent,
+        contentColor = MaterialTheme.colorScheme.onSurface
     ) { padding ->
         val node = state.node
         if (node == null) {
@@ -208,18 +203,19 @@ fun MemoryDetailScreen(
                         )
                         UtilityDivider()
                         when (node.status) {
-                            "active" -> Button(
+                            "active" -> V9PMActionButton(
+                                label = "禁止召回",
                                 onClick = suppressNode,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("禁止召回")
-                            }
-                            "do_not_recall", "deleted" -> Button(
+                                modifier = Modifier.fillMaxWidth(),
+                                height = 44.dp,
+                                destructive = true
+                            )
+                            "do_not_recall", "deleted" -> V9PMActionButton(
+                                label = "恢复召回",
                                 onClick = restoreNode,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("恢复召回")
-                            }
+                                modifier = Modifier.fillMaxWidth(),
+                                height = 44.dp
+                            )
                         }
                         if (viewModel.actionError != null) {
                             Text(
@@ -249,14 +245,14 @@ fun MemoryDetailScreen(
                             state.versions.forEachIndexed { index, version ->
                                 if (index > 0) UtilityDivider()
                                 Text("v${version.version} · ${version.changeReason} · ${version.content}")
-                                Button(
+                                V9PMActionButton(
+                                    label = "恢复此版本",
                                     onClick = rememberTactileAction {
                                         viewModel.restoreVersion(version.version)
                                     },
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Text("恢复此版本")
-                                }
+                                    modifier = Modifier.fillMaxWidth(),
+                                    height = 40.dp
+                                )
                             }
                         }
                     }
@@ -279,22 +275,23 @@ fun MemoryDetailScreen(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        Button(
+                                        V9PMActionButton(
+                                            label = "接受关联",
                                             onClick = rememberTactileAction {
                                                 viewModel.resolveRelation(relation, accepted = true)
                                             },
-                                            modifier = Modifier.weight(1f)
-                                        ) {
-                                            Text("接受关联")
-                                        }
-                                        OutlinedButton(
+                                            modifier = Modifier.weight(1f),
+                                            height = 40.dp
+                                        )
+                                        V9PMActionButton(
+                                            label = "拒绝关联",
                                             onClick = rememberTactileAction {
                                                 viewModel.resolveRelation(relation, accepted = false)
                                             },
-                                            modifier = Modifier.weight(1f)
-                                        ) {
-                                            Text("拒绝关联")
-                                        }
+                                            modifier = Modifier.weight(1f),
+                                            height = 40.dp,
+                                            destructive = true
+                                        )
                                     }
                                 }
                             }

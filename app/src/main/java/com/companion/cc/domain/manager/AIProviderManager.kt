@@ -30,11 +30,12 @@ class AIProviderManager @Inject constructor(
     suspend fun loadModelsFromAPI(baseUrl: String, apiKey: String): Result<List<String>> {
         return withContext(Dispatchers.IO) {
             try {
+                val normalizedBaseUrl = normalizeApiBaseUrl(baseUrl)
                 android.util.Log.d("AIProviderManager", "开始加载模型列表")
-                android.util.Log.d("AIProviderManager", "Base URL: $baseUrl")
+                android.util.Log.d("AIProviderManager", "Base URL: $normalizedBaseUrl")
 
                 // 检测供应商类型
-                val provider = AIProvider.detectProvider(apiKey, baseUrl)
+                val provider = AIProvider.detectProvider(apiKey, normalizedBaseUrl)
 
                 // 对于某些供应商，直接返回预定义的模型列表
                 if (shouldUsePredefinedModels(provider)) {
@@ -43,7 +44,7 @@ class AIProviderManager @Inject constructor(
                 }
 
                 // 构建完整的 models 端点 URL
-                val modelsUrl = buildModelsUrl(baseUrl, provider)
+                val modelsUrl = buildModelsUrl(normalizedBaseUrl, provider)
 
                 android.util.Log.d("AIProviderManager", "Models URL: $modelsUrl")
 
@@ -84,7 +85,7 @@ class AIProviderManager @Inject constructor(
                 android.util.Log.e("AIProviderManager", "加载模型失败", e)
 
                 // 尝试返回预定义模型作为后备
-                val provider = AIProvider.detectProvider(apiKey, baseUrl)
+                val provider = AIProvider.detectProvider(apiKey, normalizeApiBaseUrl(baseUrl))
                 if (provider.models.isNotEmpty()) {
                     android.util.Log.d("AIProviderManager", "异常情况下使用预定义模型")
                     Result.success(provider.models)
@@ -203,9 +204,9 @@ class AIProviderManager @Inject constructor(
 
         // 2. 获取有效的 Base URL（用户输入 > 已保存的 > 默认的硅基流动）
         val savedBaseUrl = settingsManager.baseUrlFlow.first()
-        val effectiveBaseUrl = baseUrl?.takeIf { it.isNotBlank() }
+        val effectiveBaseUrl = normalizeApiBaseUrl(baseUrl?.takeIf { it.isNotBlank() }
             ?: savedBaseUrl.takeIf { it.isNotBlank() }
-            ?: "https://api.siliconflow.cn/v1"
+            ?: "https://api.siliconflow.cn/v1")
 
         android.util.Log.d("AIProviderManager", "使用 Base URL: $effectiveBaseUrl")
 
@@ -264,7 +265,7 @@ class AIProviderManager @Inject constructor(
      */
     suspend fun getCurrentConfig(): ProviderConfig? {
         val apiKey = settingsManager.apiKeyFlow.first() ?: return null
-        val baseUrl = settingsManager.baseUrlFlow.first()
+        val baseUrl = normalizeApiBaseUrl(settingsManager.baseUrlFlow.first())
         val model = settingsManager.modelFlow.first()
 
         val provider = AIProvider.detectProvider(apiKey, baseUrl)

@@ -161,7 +161,8 @@ class ChatViewModelResolverTest {
                 }
             },
             innerStateRepository = mock(),
-            applicationScope = applicationScope
+            applicationScope = applicationScope,
+            appContext = mock()
         )
     }
 
